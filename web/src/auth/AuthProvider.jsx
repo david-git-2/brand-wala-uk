@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { UK_API } from "../api/ukApi";
 
 const AuthCtx = createContext(null);
 
@@ -18,62 +19,97 @@ function setCachedUser(u) {
   } catch {}
 }
 
+function redirectToLogin() {
+  // If you use HashRouter
+  if (!window.location.hash.startsWith("#/login")) {
+    window.location.hash = "#/login";
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getCachedUser());
   const [loading, setLoading] = useState(true);
 
-  // ✅ On app start: re-check access if user exists
-  useEffect(() => {
-    const run = async () => {
-      const cached = getCachedUser();
-      if (!cached?.email) {
-        setLoading(false);
-        return;
-      }
+  // ✅ prevents double-run (StrictMode) + dedupes calls
+  const startedRef = useRef(false);
+  const inflightRef = useRef(null);
 
+  const refreshAccess = async ({ redirectOnFail = true } = {}) => {
+    const cached = getCachedUser();
+    const email = String(cached?.email || "").trim();
+
+    if (!email) {
+      setCachedUser(null);
+      setUser(null);
+      if (redirectOnFail) redirectToLogin();
+      return { ok: false };
+    }
+
+    // ✅ dedupe: if already checking, return the same promise
+    if (inflightRef.current) return inflightRef.current;
+
+    inflightRef.current = (async () => {
       try {
-        const res = await fetch(window.BW_CONFIG?.API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ action: "uk_check_access", email: cached.email })
-        });
-
-        const data = await res.json();
-        if (!data?.success) {
-          setCachedUser(null);
-          setUser(null);
-          setLoading(false);
-          return;
-        }
+        const data = await UK_API.checkAccess(email);
 
         const next = {
           ...cached,
-          email: data.email || cached.email,
-          role: (data.role || "customer").toLowerCase(),
-          can_see_price_gbp: !!data.can_see_price_gbp,
+          email: String(data.email || email).trim(),
+          role: String(data.role || "customer").toLowerCase().trim(),
           is_admin: !!data.is_admin,
+          can_see_price_gbp: !!data.can_see_price_gbp,
           active: true
         };
 
         setCachedUser(next);
         setUser(next);
-      } catch {
-        // network fail → allow cached session
-        setUser(cached);
+        return { ok: true, user: next };
+      } catch (err) {
+        console.warn("uk_check_access failed:", err);
+        setCachedUser(null);
+        setUser(null);
+        if (redirectOnFail) redirectToLogin();
+        return { ok: false };
+      } finally {
+        inflightRef.current = null;
+      }
+    })();
+
+    return inflightRef.current;
+  };
+
+  // ✅ run once on app mount
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    (async () => {
+      try {
+        const cached = getCachedUser();
+        if (!cached?.email) {
+          setLoading(false);
+          redirectToLogin();
+          return;
+        }
+        await refreshAccess({ redirectOnFail: true });
       } finally {
         setLoading(false);
       }
-    };
-
-    run();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const logout = () => {
     setCachedUser(null);
     setUser(null);
+    redirectToLogin();
   };
 
-  const value = { user, setUser, loading, logout };
+  const value = useMemo(
+    () => ({ user, setUser, loading, logout, refreshAccess }),
+    [user, loading]
+  );
+
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
