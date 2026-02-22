@@ -162,6 +162,55 @@ export default function AdminOrders() {
   const [recalcErr, setRecalcErr] = useState({});
 
   const [profitDraft, setProfitDraft] = useState({});
+  // add near other state
+const [statusBusy, setStatusBusy] = useState({});
+const [statusErr, setStatusErr] = useState({});
+
+// allowed statuses (admin dropdown)
+const STATUS_OPTIONS = [
+  { value: "draft", label: "draft" },
+  { value: "submitted", label: "submitted" },
+  { value: "priced", label: "priced" },
+  { value: "under_review", label: "under_review" },
+  { value: "finalized", label: "finalized" },
+  { value: "processing", label: "processing" },
+  { value: "partially_delivered", label: "partially_delivered" },
+  { value: "delivered", label: "delivered" },
+  { value: "cancelled", label: "cancelled" },
+];
+
+async function onChangeStatus(orderId, nextStatus) {
+  const oid = String(orderId || "").trim();
+  const st = String(nextStatus || "").trim();
+  if (!oid || !st) return;
+
+  // hard block in UI (server also blocks)
+  const current = orders.find((o) => String(o.order_id || "").trim() === oid);
+  const curStatus = String(current?.status || "").toLowerCase().trim();
+  if (curStatus === "delivered") return;
+
+  setStatusErr((p) => ({ ...p, [oid]: "" }));
+  setStatusBusy((p) => ({ ...p, [oid]: true }));
+
+  try {
+    await UK_API.updateOrderStatus(user.email, oid, st);
+
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (String(o.order_id || "").trim() !== oid) return o;
+        return { ...o, status: st, updated_at: new Date().toISOString() };
+      })
+    );
+  } catch (e) {
+    setStatusErr((p) => ({ ...p, [oid]: e?.message || "Failed to update status" }));
+  } finally {
+    setStatusBusy((p) => {
+      const next = { ...p };
+      delete next[oid];
+      return next;
+    });
+  }
+}
 
   useEffect(() => {
     let alive = true;
@@ -484,6 +533,16 @@ export default function AdminOrders() {
 
                     {/* Primary actions */}
                     <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                       
+  <IconButton
+    tone="primary"
+    icon={CheckCircle2}
+    onClick={() => navigate(`/admin/orders/${oid}/review`)}
+    title="Review customer prices and set final prices"
+  >
+    Review price
+  </IconButton>
+
                       <IconButton
                         tone="slate"
                         icon={Scale}
@@ -595,6 +654,52 @@ export default function AdminOrders() {
 
                     {/* Right column */}
                     <div className="lg:col-span-1 space-y-3">
+                         {/* Status */}
+  <div className="rounded-2xl border border-slate-200 bg-white p-3">
+    <div className="flex items-center justify-between">
+      <div className="inline-flex items-center gap-2 text-xs font-semibold text-slate-900">
+        <CheckCircle2 className="h-4 w-4" /> Status
+      </div>
+
+      {!!statusBusy[oid] ? (
+        <span className="inline-flex items-center gap-2 text-xs text-slate-600">
+          <Spinner className="h-3 w-3" /> Saving…
+        </span>
+      ) : null}
+    </div>
+
+    <div className="mt-2">
+      <select
+        value={status}
+        disabled={
+          status === "delivered" || shipBusy || profitBusy || recalcLoading || !!statusBusy[oid]
+        }
+        onChange={(e) => onChangeStatus(oid, e.target.value)}
+        className={[
+          "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-400",
+          status === "delivered" ? "opacity-60 cursor-not-allowed" : "",
+        ].join(" ")}
+      >
+        {STATUS_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {status === "delivered" ? (
+      <div className="mt-2 text-[11px] text-slate-400">
+        Delivered orders are read-only.
+      </div>
+    ) : null}
+
+    {statusErr[oid] ? (
+      <div className="mt-2 rounded-xl bg-rose-50 px-2 py-2 text-xs font-medium text-rose-700">
+        {statusErr[oid]}
+      </div>
+    ) : null}
+  </div>
                       {/* Shipment assign */}
                       <div className="rounded-2xl border border-slate-200 bg-white p-3">
                         <div className="flex items-center justify-between">

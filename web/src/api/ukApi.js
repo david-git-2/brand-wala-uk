@@ -112,4 +112,12 @@ export const UK_API = {
     post("uk_order_set_profit", { email, order_id, profit_rate, profit_on_just_product }),
   orderItemsBulkUpdateWeights: (email, order_id, rows) =>
   post("uk_order_items_bulk_update_weights", { email, order_id, rows }),
+  // Update only status (ADMIN ONLY)
+updateOrderStatus: (email, order_id, status) =>
+  post("uk_update_order_status", { email, order_id, status }),
+customerUpdateOrderItems: (email, order_id, items) =>
+  post("uk_customer_update_order_items", { email, order_id, items }),
+
+customerSetUnderReview: (email, order_id) =>
+  post("uk_customer_set_under_review", { email, order_id }),
 };

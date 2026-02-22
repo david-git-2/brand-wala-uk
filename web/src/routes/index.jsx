@@ -15,6 +15,7 @@ import AdminOrderDetails from "../pages/admin/AdminOrderDetails";
 import AdminShipments from "../pages/admin/AdminShipments";
 import AdminShipmentDetails from "../pages/admin/AdminShipmentDetails";
 import AdminOrderWeights from "../pages/admin/AdminOrderWeights";
+import AdminReviewOrderDetails from "../pages/admin/AdminReviewOrderDetails";
 
 import { useAuth } from "../auth/AuthProvider";
 
@@ -140,6 +141,8 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
+
+      <Route path="/admin/orders/:orderId/review" element={<AdminReviewOrderDetails />} />
 <Route path="/admin/orders/:orderId/weights" element={<AdminOrderWeights />} />
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/products" replace />} />
