@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { minCaseSize, useCart } from "./CartProvider";
+import { useNavigate } from "react-router-dom";
 
 function toDirectGoogleImageUrl(url) {
   if (!url) return "";
@@ -24,11 +25,22 @@ function Spinner({ className = "" }) {
 }
 
 export default function CartSidebar() {
+  const nav = useNavigate(); // ✅ hook inside component
+
   const { user } = useAuth();
   const canSeePrice = !!user?.can_see_price_gbp;
 
-  // ✅ pull loading helpers from cart
-  const { open, closeCart, items, inc, dec, remove, clear, isItemLoading, loading } = useCart();
+  const {
+    open,
+    closeCart,
+    items,
+    inc,
+    dec,
+    remove,
+    clear,
+    isItemLoading,
+    loading,
+  } = useCart();
 
   const totals = useMemo(() => {
     let totalQty = 0;
@@ -64,7 +76,9 @@ export default function CartSidebar() {
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-200 p-4">
             <div>
-              <div className="text-lg font-semibold text-slate-900">Your Cart</div>
+              <div className="text-lg font-semibold text-slate-900">
+                Your Cart
+              </div>
               <div className="text-sm text-slate-500">
                 {items.length} item{items.length === 1 ? "" : "s"}
               </div>
@@ -77,7 +91,9 @@ export default function CartSidebar() {
                   disabled={loading}
                   className={[
                     "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50",
-                    loading ? "cursor-not-allowed opacity-60 hover:bg-white" : "",
+                    loading
+                      ? "cursor-not-allowed opacity-60 hover:bg-white"
+                      : "",
                   ].join(" ")}
                 >
                   {loading ? (
@@ -90,6 +106,7 @@ export default function CartSidebar() {
                   )}
                 </button>
               )}
+
               <button
                 onClick={closeCart}
                 className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
@@ -168,7 +185,9 @@ export default function CartSidebar() {
                               disabled={busy || loading}
                               className={[
                                 "h-9 w-9 rounded-xl border border-slate-200 bg-white text-slate-900 hover:bg-slate-50",
-                                busy || loading ? "cursor-not-allowed opacity-50 hover:bg-white" : "",
+                                busy || loading
+                                  ? "cursor-not-allowed opacity-50 hover:bg-white"
+                                  : "",
                               ].join(" ")}
                               title={`- ${step}`}
                             >
@@ -179,7 +198,9 @@ export default function CartSidebar() {
                               <div className="text-sm font-semibold text-slate-900">
                                 {it.qty}
                               </div>
-                              <div className="text-[11px] text-slate-500">quantity</div>
+                              <div className="text-[11px] text-slate-500">
+                                quantity
+                              </div>
                             </div>
 
                             <button
@@ -187,7 +208,9 @@ export default function CartSidebar() {
                               disabled={busy || loading}
                               className={[
                                 "h-9 w-9 rounded-xl border border-slate-200 bg-white text-slate-900 hover:bg-slate-50",
-                                busy || loading ? "cursor-not-allowed opacity-50 hover:bg-white" : "",
+                                busy || loading
+                                  ? "cursor-not-allowed opacity-50 hover:bg-white"
+                                  : "",
                               ].join(" ")}
                               title={`+ ${step}`}
                             >
@@ -236,7 +259,9 @@ export default function CartSidebar() {
           <div className="border-t border-slate-200 p-4">
             <div className="flex items-center justify-between text-sm text-slate-600">
               <span>Total quantity</span>
-              <span className="font-semibold text-slate-900">{totals.totalQty}</span>
+              <span className="font-semibold text-slate-900">
+                {totals.totalQty}
+              </span>
             </div>
 
             {canSeePrice && (
@@ -251,7 +276,7 @@ export default function CartSidebar() {
             <button
               className="mt-4 w-full rounded-2xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
               disabled={items.length === 0 || loading}
-              onClick={() => alert("Hook this up to your checkout / order flow")}
+              onClick={() => nav("/cart")}
             >
               Checkout
             </button>
