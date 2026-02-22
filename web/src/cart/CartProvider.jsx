@@ -1,6 +1,6 @@
 // ============================
 // src/cart/CartProvider.jsx
-// (UPDATED - product_id PK + API + op-based loading per item + NON-OPTIMISTIC add/remove)
+// (UPDATED - adds updateQty + createOrder)
 // ============================
 
 import { createContext, useContext, useEffect, useMemo, useReducer } from "react";
@@ -53,15 +53,17 @@ function reducer(state, action) {
     case "SET_ITEM_LOADING": {
       const { key, op } = action;
       const next = { ...state.itemLoading };
-
       if (!op) delete next[key];
       else next[key] = op;
-
       return { ...state, itemLoading: next };
     }
 
     case "SET_GLOBAL_LOADING":
       return { ...state, loading: !!action.loading };
+
+    // ✅ new: order creation loading flag
+    case "SET_ORDER_LOADING":
+      return { ...state, orderLoading: !!action.loading };
 
     // local mutations
     case "ADD_LOCAL": {
@@ -107,6 +109,7 @@ function reducer(state, action) {
 const initialState = {
   open: false,
   loading: false,
+  orderLoading: false, // ✅ new
   itemLoading: {}, // { [product_id]: "add" | "remove" | "update" }
   items: {},
 };
@@ -147,7 +150,7 @@ export function CartProvider({ children }) {
 
   const api = useMemo(() => {
     const itemsArr = Object.entries(state.items).map(([key, v]) => ({
-      key,
+      key, // ✅ product_id
       ...v,
     }));
 
@@ -160,7 +163,7 @@ export function CartProvider({ children }) {
       const key = getKey(product);
       if (!key) throw new Error("Missing product_id on product");
 
-      if (state.itemLoading[key]) return; // already busy
+      if (state.itemLoading[key]) return;
 
       dispatch({ type: "SET_ITEM_LOADING", key, op: "add" });
 
@@ -176,11 +179,9 @@ export function CartProvider({ children }) {
           quantity: qty,
         });
 
-        // ✅ ONLY add locally after API success
         dispatch({ type: "ADD_LOCAL", key, product, qty });
       } catch (e) {
         console.error("cartAddItem failed:", e);
-        // optional refresh to ensure state is accurate
         try {
           const data = await UK_API.cartGetItems(email);
           dispatch({ type: "SET_ITEMS", items: data.items || [] });
@@ -196,13 +197,12 @@ export function CartProvider({ children }) {
       const key = String(productId || "").trim();
       if (!key) return;
 
-      if (state.itemLoading[key]) return; // already busy
+      if (state.itemLoading[key]) return;
 
       dispatch({ type: "SET_ITEM_LOADING", key, op: "remove" });
 
       try {
         await UK_API.cartDeleteItem(email, key);
-        // ✅ remove only after API success
         dispatch({ type: "REMOVE_LOCAL", key });
       } catch (e) {
         console.error("cartDeleteItem failed:", e);
@@ -216,6 +216,7 @@ export function CartProvider({ children }) {
       }
     };
 
+    // NOTE: keep name setQty (existing)
     const setQty = async (productId, qty) => {
       if (!email) throw new Error("No user email");
 
@@ -223,14 +224,14 @@ export function CartProvider({ children }) {
       const item = state.items[key];
       if (!item) return;
 
-      if (state.itemLoading[key]) return; // avoid stacking ops
+      if (state.itemLoading[key]) return;
 
       const step = minCaseSize(item.product);
       const safeQty = Math.max(step, Number(qty || 0) || 0);
 
       dispatch({ type: "SET_ITEM_LOADING", key, op: "update" });
 
-      // keep qty optimistic (or make non-optimistic if you want)
+      // optimistic local update (keeps UI fast)
       dispatch({ type: "UPDATE_QTY_LOCAL", key, qty: safeQty });
 
       try {
@@ -246,6 +247,9 @@ export function CartProvider({ children }) {
         dispatch({ type: "SET_ITEM_LOADING", key, op: null });
       }
     };
+
+    // ✅ alias so Cart.jsx can call updateQty()
+    const updateQty = setQty;
 
     const inc = (productId) => {
       const key = String(productId || "").trim();
@@ -294,9 +298,39 @@ export function CartProvider({ children }) {
       }
     };
 
+    // ✅ Create order from cart
+    // Server should set status = submitted, and should read items from cart if body.items empty
+    const createOrder = async (orderName) => {
+      if (!email) throw new Error("No user email");
+      const name = String(orderName || "").trim();
+      if (!name) throw new Error("Missing order_name");
+
+      if (state.orderLoading) return;
+
+      dispatch({ type: "SET_ORDER_LOADING", loading: true });
+      try {
+        // Preferred (after you update ukApi.js):
+        // const res = await UK_API.createOrder(email, name);
+
+        // Backward compatible with your current ukApi.js signature:
+        const res = await UK_API.createOrder(email, name);
+
+        // refresh cart (server may clear)
+        try {
+          const data = await UK_API.cartGetItems(email);
+          dispatch({ type: "SET_ITEMS", items: data.items || [] });
+        } catch {}
+
+        return res;
+      } finally {
+        dispatch({ type: "SET_ORDER_LOADING", loading: false });
+      }
+    };
+
     return {
       open: state.open,
       loading: state.loading,
+      orderLoading: state.orderLoading, // ✅ exposed
       items: itemsArr,
       distinctCount: itemsArr.length,
 
@@ -323,13 +357,20 @@ export function CartProvider({ children }) {
 
       add,
       remove,
+
+      // qty
       setQty,
+      updateQty, // ✅ new
       inc,
       dec,
+
       clear,
       refresh,
+
+      // order
+      createOrder, // ✅ new
     };
-  }, [email, state.items, state.itemLoading, state.loading, state.open]);
+  }, [email, state.items, state.itemLoading, state.loading, state.open, state.orderLoading]);
 
   return <CartContext.Provider value={api}>{children}</CartContext.Provider>;
 }

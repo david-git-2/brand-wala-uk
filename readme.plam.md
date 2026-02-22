@@ -476,3 +476,22 @@ I can plug in your **Google Login + uk_login** in React the same way you do now,
 * price/cart gating
 
 If you tell me your GitHub repo name (exact), I’ll give you the final `vite.config.js base` line and the exact deploy URL.
+c
+
+
+
+
+
+
+
+| Status              | Customer          | Admin              |
+| ------------------- | ----------------- | ------------------ |
+| draft               | Full edit         | Full edit          |
+| submitted           | Read only         | Full edit          |
+| priced              | Accept or counter | Full edit          |
+| under_review        | Adjust counter    | Full edit          |
+| finalized           | Read only         | Full edit          |
+| processing          | Read only         | Update shipped qty |
+| partially_delivered | Read only         | Full edit          |
+| delivered           | Read only         | Read only          |
+| cancelled           | Read only         | Full edit          |
