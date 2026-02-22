@@ -11,7 +11,7 @@ export default function AppRoutes() {
       <Route path="/login" element={<Login />} />
 
       <Route
-        path="/"
+        path="/products"
         element={
           <ProtectedRoute>
             <Products />

@@ -57,7 +57,7 @@ export default function Login() {
 
   // If already logged in -> go home
   useEffect(() => {
-    if (user) nav("/", { replace: true });
+    if (user) nav("/products", { replace: true });
   }, [user, nav]);
 
   useEffect(() => {

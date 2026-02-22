@@ -1,0 +1,7 @@
+{
+  "brand": "BW",
+  "links": [
+    { "label": "Products", "to": "/products", "roles": ["admin", "customer"] },
+    { "label": "Orders", "to": "/orders", "roles": ["admin"] }
+  ]
+}

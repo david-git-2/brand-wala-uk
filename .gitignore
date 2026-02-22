@@ -9,3 +9,6 @@ web/dist/
 
 # misc
 .DS_Store
+
+python/credentials/
+python/images/
