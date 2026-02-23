@@ -58,7 +58,7 @@ function UK_handleCreateOrder(body) {
   orderRow[mO.creator_email] = email;
   orderRow[mO.creator_name] = String(user.name || "").trim();
   orderRow[mO.creator_role] = String(user.role || "customer").trim();
-  orderRow[mO.creator_can_see_price_gbp] = !!user.can_see_price_gbp;
+  orderRow[mO.creator_can_see_price_gbp] = ukBool01_(user.can_see_price_gbp);
   orderRow[mO.status] = "submitted";
   orderRow[mO.created_at] = now;
   orderRow[mO.updated_at] = now;

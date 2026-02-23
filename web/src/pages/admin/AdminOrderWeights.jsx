@@ -219,7 +219,21 @@ export default function AdminOrderWeights() {
       ) : null}
 
       {loading ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-600">Loading…</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="space-y-3">
+            <div className="h-4 w-40 rounded bg-slate-100 animate-pulse" />
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="grid grid-cols-4 gap-2">
+                  <div className="h-8 rounded bg-slate-100 animate-pulse" />
+                  <div className="h-8 rounded bg-slate-100 animate-pulse" />
+                  <div className="h-8 rounded bg-slate-100 animate-pulse" />
+                  <div className="h-8 rounded bg-slate-100 animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Grid */}

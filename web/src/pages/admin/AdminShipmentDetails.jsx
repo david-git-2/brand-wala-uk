@@ -1,32 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+
 import { UK_API } from "../../api/ukApi";
 import { useAuth } from "../../auth/AuthProvider";
 import ConfirmDeleteDialog from "../../components/common/ConfirmDeleteDialog";
 
-function SkeletonCard() {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="h-5 w-56 rounded bg-slate-100 animate-pulse" />
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        <div className="h-4 w-full rounded bg-slate-100 animate-pulse" />
-        <div className="h-4 w-full rounded bg-slate-100 animate-pulse" />
-        <div className="h-4 w-full rounded bg-slate-100 animate-pulse" />
-        <div className="h-4 w-full rounded bg-slate-100 animate-pulse" />
-      </div>
-    </div>
-  );
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function n(v, d = 0) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : d;
 }
 
-function Spinner({ className = "" }) {
+function fmt0(v) {
+  return Math.round(n(v, 0));
+}
+
+function ShipmentSkeleton() {
   return (
-    <span
-      className={[
-        "inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent",
-        className,
-      ].join(" ")}
-      aria-hidden="true"
-    />
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <Skeleton className="h-5 w-64" />
+        <div className="grid gap-2 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-16" />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -35,340 +40,369 @@ export default function AdminShipmentDetails() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const email = user?.email || "";
+  const [shipment, setShipment] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [itemsByOrder, setItemsByOrder] = useState({});
+  const [allocations, setAllocations] = useState([]);
+
+  const [form, setForm] = useState({
+    order_id: "",
+    order_item_id: "",
+    allocated_qty: "",
+    shipped_qty: "0",
+    unit_product_weight: "",
+    unit_package_weight: "",
+  });
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [topMsg, setTopMsg] = useState("");
 
-  const [shipment, setShipment] = useState(null);
+  const [savingCreate, setSavingCreate] = useState(false);
+  const [savingRow, setSavingRow] = useState({});
+  const [rowDraft, setRowDraft] = useState({});
+  const [rowErr, setRowErr] = useState({});
 
-  const [orderIds, setOrderIds] = useState([]); // linked order ids from mapping table
-  const [ordersAll, setOrdersAll] = useState([]); // admin orders list (for details + select options)
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
-  // add orders UI
-  const [selectedToAdd, setSelectedToAdd] = useState([]); // order_ids
-  const [adding, setAdding] = useState(false);
-  const [addErr, setAddErr] = useState("");
+  async function loadCore() {
+    if (!user?.email || !shipmentId) return;
 
-  // remove confirm
-  const [removeOpen, setRemoveOpen] = useState(false);
-  const [removeTarget, setRemoveTarget] = useState(null); // { order_id }
-  const [removing, setRemoving] = useState(false);
-  const [removeErr, setRemoveErr] = useState("");
+    const [shipmentRes, allocRes, ordersRes] = await Promise.all([
+      UK_API.shipmentGetOne(user.email, shipmentId),
+      UK_API.allocationGetForShipment(user.email, shipmentId),
+      UK_API.getOrders(user.email),
+    ]);
 
-  async function loadAll() {
-    if (!email || !shipmentId) return;
+    const nextAlloc = Array.isArray(allocRes.allocations) ? allocRes.allocations : [];
+    const nextOrders = Array.isArray(ordersRes.orders) ? ordersRes.orders : [];
 
-    setLoading(true);
-    setErr("");
+    setShipment(shipmentRes.shipment || null);
+    setAllocations(nextAlloc);
+    setOrders(nextOrders);
+
+    setRowDraft((prev) => {
+      const next = { ...prev };
+      for (const a of nextAlloc) {
+        const id = String(a.allocation_id || "");
+        next[id] = {
+          allocated_qty: String(a.allocated_qty ?? ""),
+          shipped_qty: String(a.shipped_qty ?? ""),
+          unit_product_weight: String(a.unit_product_weight ?? ""),
+          unit_package_weight: String(a.unit_package_weight ?? ""),
+        };
+      }
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    let alive = true;
+
+    async function run() {
+      if (!user?.email || !shipmentId) return;
+      setLoading(true);
+      setErr("");
+      setTopMsg("");
+      try {
+        await loadCore();
+      } catch (e) {
+        if (!alive) return;
+        setErr(e?.message || "Failed to load shipment details");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [user?.email, shipmentId]);
+
+  async function loadOrderItems(orderId) {
+    const oid = String(orderId || "").trim();
+    if (!oid || itemsByOrder[oid]) return;
     try {
-      const [s, links, o] = await Promise.all([
-        UK_API.shipmentGetOne(email, shipmentId),
-        UK_API.shipmentGetOrders(email, shipmentId),
-        UK_API.getOrders(email), // admin gets all columns
-      ]);
-
-      setShipment(s?.shipment || null);
-      setOrderIds(Array.isArray(links?.order_ids) ? links.order_ids : []);
-      setOrdersAll(Array.isArray(o?.orders) ? o.orders : []);
+      const res = await UK_API.getOrderItems(user.email, oid);
+      setItemsByOrder((p) => ({ ...p, [oid]: Array.isArray(res.items) ? res.items : [] }));
     } catch (e) {
-      setErr(e?.message || "Failed to load shipment details");
-    } finally {
-      setLoading(false);
+      setTopMsg(e?.message || "Failed to load order items");
     }
   }
 
   useEffect(() => {
-    loadAll();
+    if (!form.order_id) return;
+    loadOrderItems(form.order_id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email, shipmentId]);
+  }, [form.order_id]);
 
-  const orderIdsSet = useMemo(() => new Set(orderIds.map((x) => String(x || "").trim())), [orderIds]);
+  const orderItems = useMemo(() => itemsByOrder[form.order_id] || [], [itemsByOrder, form.order_id]);
 
-  const linkedOrders = useMemo(() => {
-    // map order_ids to order objects if we have them; else fallback
-    const map = new Map();
-    for (const o of ordersAll) map.set(String(o.order_id || "").trim(), o);
+  async function createAllocation() {
+    if (!form.order_item_id || !form.allocated_qty) return;
 
-    const out = [];
-    for (const id of orderIds) {
-      const oid = String(id || "").trim();
-      if (!oid) continue;
-      out.push(map.get(oid) || { order_id: oid });
-    }
-
-    // sort by created_at desc if available
-    out.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
-    return out;
-  }, [orderIds, ordersAll]);
-
-  const availableToAdd = useMemo(() => {
-    // allow adding orders that are not already linked
-    return ordersAll
-      .filter((o) => {
-        const oid = String(o.order_id || "").trim();
-        if (!oid) return false;
-        return !orderIdsSet.has(oid);
-      })
-      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
-  }, [ordersAll, orderIdsSet]);
-
-  async function onAddOrders() {
-    const ids = selectedToAdd.map((x) => String(x || "").trim()).filter(Boolean);
-    if (!ids.length) return;
-
-    setAdding(true);
-    setAddErr("");
+    setSavingCreate(true);
+    setTopMsg("");
     try {
-      await UK_API.shipmentAddOrders(email, shipmentId, ids);
-      setSelectedToAdd([]);
-      await loadAll();
+      await UK_API.allocationCreate(user.email, {
+        shipment_id: shipmentId,
+        order_item_id: form.order_item_id,
+        allocated_qty: Number(form.allocated_qty),
+        shipped_qty: Number(form.shipped_qty || 0),
+        unit_product_weight: form.unit_product_weight === "" ? "" : Number(form.unit_product_weight),
+        unit_package_weight: form.unit_package_weight === "" ? "" : Number(form.unit_package_weight),
+      });
+
+      await loadCore();
+      setForm((p) => ({ ...p, order_item_id: "", allocated_qty: "", shipped_qty: "0", unit_product_weight: "", unit_package_weight: "" }));
+      setTopMsg("Allocation added.");
     } catch (e) {
-      setAddErr(e?.message || "Failed to add orders");
+      setTopMsg(e?.message || "Failed to create allocation");
     } finally {
-      setAdding(false);
+      setSavingCreate(false);
     }
   }
 
-  function openRemove(order_id) {
-    setRemoveTarget({ order_id });
-    setRemoveErr("");
-    setRemoveOpen(true);
+  async function saveAllocationRow(a) {
+    const id = String(a.allocation_id || "");
+    const d = rowDraft[id] || {};
+
+    setSavingRow((p) => ({ ...p, [id]: true }));
+    setRowErr((p) => ({ ...p, [id]: "" }));
+    try {
+      await UK_API.allocationUpdate(user.email, id, {
+        allocated_qty: d.allocated_qty === "" ? "" : Number(d.allocated_qty),
+        shipped_qty: d.shipped_qty === "" ? "" : Number(d.shipped_qty),
+        unit_product_weight: d.unit_product_weight === "" ? "" : Number(d.unit_product_weight),
+        unit_package_weight: d.unit_package_weight === "" ? "" : Number(d.unit_package_weight),
+      });
+      await UK_API.recomputeShipment(user.email, shipmentId);
+
+      const relatedOrderIds = [...new Set(allocations.map((x) => String(x.order_id || "")).filter(Boolean))];
+      await Promise.all(relatedOrderIds.map((oid) => UK_API.recomputeOrder(user.email, oid).catch(() => null)));
+
+      await loadCore();
+    } catch (e) {
+      setRowErr((p) => ({ ...p, [id]: e?.message || "Failed to save" }));
+    } finally {
+      setSavingRow((p) => {
+        const next = { ...p };
+        delete next[id];
+        return next;
+      });
+    }
   }
 
-  async function onConfirmRemove() {
-    const oid = String(removeTarget?.order_id || "").trim();
-    if (!oid) return;
+  function openDelete(a) {
+    setDeleteTarget(a);
+    setDeleteError("");
+    setDeleteOpen(true);
+  }
 
-    setRemoving(true);
-    setRemoveErr("");
+  async function onDelete() {
+    const id = String(deleteTarget?.allocation_id || "");
+    if (!id) return;
+
+    setDeleting(true);
+    setDeleteError("");
     try {
-      await UK_API.shipmentRemoveOrders(email, shipmentId, [oid]);
-      setRemoveOpen(false);
-      setRemoveTarget(null);
-      await loadAll();
+      await UK_API.allocationDelete(user.email, id);
+      await UK_API.recomputeShipment(user.email, shipmentId);
+      await loadCore();
+      setDeleteOpen(false);
+      setDeleteTarget(null);
     } catch (e) {
-      setRemoveErr(e?.message || "Failed to remove order");
+      setDeleteError(e?.message || "Failed to delete allocation");
     } finally {
-      setRemoving(false);
+      setDeleting(false);
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl p-4 md:p-6">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+      <div className="mb-4 flex items-start justify-between gap-2">
         <div>
-          <button
-            onClick={() => navigate("/admin/shipments")}
-            className="mb-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900"
-          >
-            ← Back to shipments
-          </button>
-
-          <h1 className="text-2xl font-bold text-slate-900">Shipment details</h1>
-          <p className="text-sm text-slate-500">{shipmentId}</p>
+          <Button variant="link" className="h-auto p-0 text-sm" onClick={() => navigate("/admin/shipments")}>Back to shipments</Button>
+          <h1 className="text-2xl font-semibold tracking-tight">Shipment Details</h1>
+          <p className="text-sm text-muted-foreground">{shipmentId}</p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate("/admin/orders")}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-          >
-            Orders
-          </button>
-        </div>
+        <Button variant="outline" onClick={() => navigate("/admin/orders")}>Orders</Button>
       </div>
 
-      {err ? (
-        <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
-          {err}
-        </div>
-      ) : null}
+      {err ? <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> : null}
+      {topMsg ? <div className="mb-3 rounded-lg border px-4 py-3 text-sm">{topMsg}</div> : null}
 
       {loading ? (
-        <SkeletonCard />
-      ) : shipment ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-lg font-semibold text-slate-900">{shipment.name}</div>
-          <div className="mt-3 grid grid-cols-1 gap-3 text-sm text-slate-700 md:grid-cols-2">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-500">GBP avg rate</div>
-              <div className="mt-1 font-semibold">{Number(shipment.gbp_avg_rate || 0)}</div>
-            </div>
-
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-500">Cargo cost / kg</div>
-              <div className="mt-1 font-semibold">{Number(shipment.cargo_cost_per_kg || 0)}</div>
-            </div>
-
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-500">GBP rate (product)</div>
-              <div className="mt-1 font-semibold">{Number(shipment.gbp_rate_product || 0)}</div>
-            </div>
-
-            <div className="rounded-xl bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-500">GBP rate (cargo)</div>
-              <div className="mt-1 font-semibold">{Number(shipment.gbp_rate_cargo || 0)}</div>
-            </div>
-          </div>
-
-          <div className="mt-3 text-xs text-slate-500">
-            Created: {shipment.created_at || "—"} • Updated: {shipment.updated_at || "—"}
-          </div>
-        </div>
+        <ShipmentSkeleton />
       ) : (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-600">
-          Shipment not found.
-        </div>
+        <>
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-base">Shipment</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm md:grid-cols-4">
+              <div className="rounded-lg border p-2">Name: {shipment?.name || "-"}</div>
+              <div className="rounded-lg border p-2">GBP Avg: {n(shipment?.gbp_avg_rate)}</div>
+              <div className="rounded-lg border p-2">Product Rate: {n(shipment?.gbp_rate_product)}</div>
+              <div className="rounded-lg border p-2">Cargo Rate: {n(shipment?.gbp_rate_cargo)}</div>
+              <div className="rounded-lg border p-2">Cargo Cost/KG: {n(shipment?.cargo_cost_per_kg)}</div>
+              <div className="rounded-lg border p-2">Status: {shipment?.status || "-"}</div>
+              <div className="rounded-lg border p-2">Created: {shipment?.created_at || "-"}</div>
+              <div className="rounded-lg border p-2">Updated: {shipment?.updated_at || "-"}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-base">Add Allocation</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2 md:grid-cols-6">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Order</label>
+                <Select
+                  value={form.order_id}
+                  onValueChange={(v) => setForm((p) => ({ ...p, order_id: v, order_item_id: "" }))}
+                >
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select order" /></SelectTrigger>
+                  <SelectContent>
+                    {orders.map((o) => (
+                      <SelectItem key={o.order_id} value={o.order_id}>{o.order_id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Order Item</label>
+                <Select
+                  value={form.order_item_id}
+                  onValueChange={(v) => setForm((p) => ({ ...p, order_item_id: v }))}
+                  disabled={!form.order_id}
+                >
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select item" /></SelectTrigger>
+                  <SelectContent>
+                    {orderItems.map((it) => (
+                      <SelectItem key={it.order_item_id} value={it.order_item_id}>
+                        {it.order_item_id} ({it.name || it.product_id || "item"})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Allocated Qty</label>
+                <Input value={form.allocated_qty} onChange={(e) => setForm((p) => ({ ...p, allocated_qty: e.target.value }))} inputMode="decimal" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Shipped Qty</label>
+                <Input value={form.shipped_qty} onChange={(e) => setForm((p) => ({ ...p, shipped_qty: e.target.value }))} inputMode="decimal" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Unit Product Wt</label>
+                <Input value={form.unit_product_weight} onChange={(e) => setForm((p) => ({ ...p, unit_product_weight: e.target.value }))} inputMode="decimal" />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">Unit Package Wt</label>
+                <Input value={form.unit_package_weight} onChange={(e) => setForm((p) => ({ ...p, unit_package_weight: e.target.value }))} inputMode="decimal" />
+              </div>
+
+              <div className="md:col-span-6">
+                <Button disabled={savingCreate || !form.order_item_id || !form.allocated_qty} onClick={createAllocation}>
+                  {savingCreate ? "Adding..." : "Add Allocation"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base">Allocations ({allocations.length})</CardTitle>
+              <Button variant="outline" onClick={async () => {
+                await UK_API.recomputeShipment(user.email, shipmentId);
+                const relatedOrderIds = [...new Set(allocations.map((x) => String(x.order_id || "")).filter(Boolean))];
+                await Promise.all(relatedOrderIds.map((oid) => UK_API.recomputeOrder(user.email, oid).catch(() => null)));
+                await loadCore();
+                setTopMsg("Shipment and related orders recomputed.");
+              }}>
+                Recompute Shipment
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {allocations.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No allocations yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-muted/40 text-muted-foreground">
+                      <tr className="text-left">
+                        <th className="px-3 py-2">Allocation</th>
+                        <th className="px-3 py-2">Order/Item</th>
+                        <th className="px-3 py-2">Allocated</th>
+                        <th className="px-3 py-2">Shipped</th>
+                        <th className="px-3 py-2">Weights</th>
+                        <th className="px-3 py-2">Costs (BDT)</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {allocations.map((a) => {
+                        const id = String(a.allocation_id || "");
+                        const d = rowDraft[id] || {};
+                        const busy = !!savingRow[id];
+                        return (
+                          <tr key={id}>
+                            <td className="px-3 py-2">{id}</td>
+                            <td className="px-3 py-2">{a.order_id}<br />{a.order_item_id}</td>
+                            <td className="px-3 py-2"><Input className="h-8 w-24 text-xs" value={d.allocated_qty ?? ""} onChange={(e) => setRowDraft((p) => ({ ...p, [id]: { ...p[id], allocated_qty: e.target.value } }))} /></td>
+                            <td className="px-3 py-2"><Input className="h-8 w-24 text-xs" value={d.shipped_qty ?? ""} onChange={(e) => setRowDraft((p) => ({ ...p, [id]: { ...p[id], shipped_qty: e.target.value } }))} /></td>
+                            <td className="px-3 py-2">
+                              <div className="flex gap-1">
+                                <Input className="h-8 w-20 text-xs" value={d.unit_product_weight ?? ""} onChange={(e) => setRowDraft((p) => ({ ...p, [id]: { ...p[id], unit_product_weight: e.target.value } }))} />
+                                <Input className="h-8 w-20 text-xs" value={d.unit_package_weight ?? ""} onChange={(e) => setRowDraft((p) => ({ ...p, [id]: { ...p[id], unit_package_weight: e.target.value } }))} />
+                              </div>
+                              <div className="mt-1 text-[10px] text-muted-foreground">total wt {n(a.unit_total_weight)} • shipped wt {n(a.shipped_weight)}</div>
+                            </td>
+                            <td className="px-3 py-2">cost {fmt0(a.total_cost_bdt)}<br />profit {fmt0(a.profit_bdt)}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="outline" disabled={busy} onClick={() => saveAllocationRow(a)}>
+                                  {busy ? "Saving..." : "Save"}
+                                </Button>
+                                <Button size="sm" variant="destructive" onClick={() => openDelete(a)}>Delete</Button>
+                              </div>
+                              {rowErr[id] ? <div className="mt-1 text-[10px] text-destructive">{rowErr[id]}</div> : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
       )}
 
-      {/* Add orders to shipment */}
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-lg font-semibold text-slate-900">Orders in this shipment</div>
-            <div className="text-sm text-slate-500">{linkedOrders.length} order(s)</div>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-end">
-          <div>
-            <label className="block text-sm font-medium text-slate-700">
-              Add orders (multi-select)
-            </label>
-
-            <select
-              multiple
-              value={selectedToAdd}
-              onChange={(e) => {
-                const opts = Array.from(e.target.selectedOptions).map((o) => o.value);
-                setSelectedToAdd(opts);
-              }}
-              className="mt-2 h-44 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400"
-              disabled={adding || !availableToAdd.length}
-            >
-              {availableToAdd.length === 0 ? (
-                <option value="" disabled>
-                  All orders are already linked (or no orders exist)
-                </option>
-              ) : (
-                availableToAdd.map((o) => (
-                  <option key={o.order_id} value={o.order_id}>
-                    {o.order_name || "Untitled"} • {o.order_id} • {o.status || "—"}
-                  </option>
-                ))
-              )}
-            </select>
-
-            {addErr ? (
-              <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {addErr}
-              </div>
-            ) : null}
-          </div>
-
-          <button
-            onClick={onAddOrders}
-            disabled={adding || selectedToAdd.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            {adding ? (
-              <>
-                <Spinner className="h-4 w-4" />
-                Adding…
-              </>
-            ) : (
-              "Add selected"
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Linked orders list */}
-      <div className="mt-3 rounded-2xl border border-slate-200 bg-white overflow-hidden">
-        {loading ? null : linkedOrders.length === 0 ? (
-          <div className="p-6 text-slate-600">No orders linked to this shipment yet.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr className="text-left">
-                  <th className="px-4 py-3 font-semibold">Order</th>
-                  <th className="px-4 py-3 font-semibold">Creator</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">Qty</th>
-                  <th className="px-4 py-3 font-semibold">Created</th>
-                  <th className="px-4 py-3 font-semibold"></th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-100">
-                {linkedOrders.map((o) => {
-                  const oid = String(o.order_id || "").trim();
-                  return (
-                    <tr key={oid} className="hover:bg-slate-50 align-top">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-slate-900">{o.order_name || "Untitled"}</div>
-                        <div className="text-xs text-slate-500">{oid}</div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="text-slate-900">{o.creator_name || "—"}</div>
-                        <div className="text-xs text-slate-500">{o.creator_email || "—"}</div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                          {o.status || "—"}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3">{Number(o.total_order_quantity || 0) || 0}</td>
-
-                      <td className="px-4 py-3 text-slate-600">{o.created_at || "—"}</td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to={`/admin/orders/${oid}`}
-                            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-50"
-                          >
-                            View
-                          </Link>
-
-                          <button
-                            onClick={() => openRemove(oid)}
-                            className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Remove confirm */}
       <ConfirmDeleteDialog
-        open={removeOpen}
-        loading={removing}
-        error={removeErr}
-        title="Remove order from shipment"
-        description={
-          removeTarget?.order_id
-            ? `Remove order ${removeTarget.order_id} from shipment ${shipmentId}?`
-            : "Remove this order?"
-        }
-        confirmText="Remove"
+        open={deleteOpen}
+        loading={deleting}
+        error={deleteError}
+        title="Delete allocation"
+        description={deleteTarget ? `Delete ${deleteTarget.allocation_id}?` : "Delete allocation?"}
+        confirmText="Delete"
         onClose={() => {
-          if (!removing) setRemoveOpen(false);
+          if (!deleting) setDeleteOpen(false);
         }}
-        onConfirm={onConfirmRemove}
+        onConfirm={onDelete}
       />
     </div>
   );

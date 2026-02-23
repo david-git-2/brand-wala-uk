@@ -91,6 +91,15 @@ function doPost(e) {
     if (action === "uk_pricing_mode_delete") return _ret(UK_handlePricingModeDelete(body)); // or deactivate
 
     // ----------------------------
+    // Users CRUD (ADMIN ONLY)
+    // ----------------------------
+    if (action === "uk_user_get_all") return _ret(UK_handleUserGetAll(body));
+    if (action === "uk_user_get_one") return _ret(UK_handleUserGetOne(body));
+    if (action === "uk_user_create") return _ret(UK_handleUserCreate(body));
+    if (action === "uk_user_update") return _ret(UK_handleUserUpdate(body));
+    if (action === "uk_user_delete") return _ret(UK_handleUserDelete(body));
+
+    // ----------------------------
     // Recompute / rollups (ADMIN ONLY but safe)
     // ----------------------------
     if (action === "uk_recompute_order") return _ret(UK_handleRecomputeOrder(body));

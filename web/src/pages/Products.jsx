@@ -8,7 +8,6 @@ import ProductCard from "../components/ProductCard";
 // shadcn/ui
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -17,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function buildProductId(p) {
@@ -210,31 +208,6 @@ export default function Products() {
               </div>
             </div>
 
-            {/* Quick brand pills */}
-            {!loading && (
-              <>
-                <Separator className="my-4" />
-                <div className="flex flex-wrap gap-2">
-                  {brands.slice(0, 12).map((b) => (
-                    <Button
-                      key={b}
-                      type="button"
-                      variant={brand === b ? "default" : "secondary"}
-                      className="h-7 rounded-full px-3 text-xs"
-                      onClick={() => setBrand(b)}
-                    >
-                      {b === "ALL" ? "All" : b}
-                    </Button>
-                  ))}
-
-                  {brands.length > 12 && (
-                    <Badge variant="secondary" className="self-center">
-                      +{brands.length - 12} more in dropdown
-                    </Badge>
-                  )}
-                </div>
-              </>
-            )}
           </CardContent>
         </Card>
 

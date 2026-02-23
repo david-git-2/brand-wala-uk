@@ -14,8 +14,10 @@ import AdminOrders from "../pages/admin/AdminOrders";
 import AdminOrderDetails from "../pages/admin/AdminOrderDetails";
 import AdminShipments from "../pages/admin/AdminShipments";
 import AdminShipmentDetails from "../pages/admin/AdminShipmentDetails";
-import AdminOrderWeights from "../pages/admin/AdminOrderWeights";
-import AdminReviewOrderDetails from "../pages/admin/AdminReviewOrderDetails";
+import AdminUsers from "../pages/admin/AdminUsers";
+import AdminPricingModes from "../pages/admin/AdminPricingModes";
+import AboutAdmin from "../pages/about/AboutAdmin";
+import AboutCustomer from "../pages/about/AboutCustomer";
 
 import { useAuth } from "../auth/AuthProvider";
 
@@ -24,6 +26,12 @@ function OrdersRedirect() {
   const { user } = useAuth();
   const role = String(user?.role || "customer").toLowerCase();
   return <Navigate to={role === "admin" ? "/admin/orders" : "/customer/orders"} replace />;
+}
+
+function AboutRedirect() {
+  const { user } = useAuth();
+  const role = String(user?.role || "customer").toLowerCase();
+  return <Navigate to={role === "admin" ? "/about/admin" : "/about/customer"} replace />;
 }
 
 // Admin-only guard
@@ -61,6 +69,15 @@ export default function AppRoutes() {
         }
       />
 
+      <Route
+        path="/about"
+        element={
+          <ProtectedRoute>
+            <AboutRedirect />
+          </ProtectedRoute>
+        }
+      />
+
       {/* ========================= */}
       {/* Customer routes */}
       {/* ========================= */}
@@ -78,6 +95,15 @@ export default function AppRoutes() {
         element={
           <ProtectedRoute>
             <CustomerOrderDetails />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/about/customer"
+        element={
+          <ProtectedRoute>
+            <AboutCustomer />
           </ProtectedRoute>
         }
       />
@@ -132,6 +158,39 @@ export default function AppRoutes() {
         }
       />
 
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminUsers />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin/pricing-modes"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminPricingModes />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/about/admin"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AboutAdmin />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+
       {/* Cart */}
       <Route
         path="/cart"
@@ -141,9 +200,6 @@ export default function AppRoutes() {
           </ProtectedRoute>
         }
       />
-
-      <Route path="/admin/orders/:orderId/review" element={<AdminReviewOrderDetails />} />
-<Route path="/admin/orders/:orderId/weights" element={<AdminOrderWeights />} />
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/products" replace />} />
     </Routes>

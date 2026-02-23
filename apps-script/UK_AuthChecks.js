@@ -3,7 +3,7 @@
 // ============================
 
 function ukGetUserByEmail_(email) {
-  const em = String(email || "").trim();
+  const em = String(email || "").trim().toLowerCase();
   if (!em) return null;
 
   const sh = ukGetSheet_("users");
@@ -12,13 +12,14 @@ function ukGetUserByEmail_(email) {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const rowEmail = String(r.email || "").trim();
-    if (rowEmail !== em) continue;
+    const rowEmailNorm = rowEmail.toLowerCase();
+    if (rowEmailNorm !== em) continue;
 
     return {
       email: rowEmail,
-      active: ukTruthy_(r.active),
+      active: ukToBool_(r.active),
       role: String(r.role || "customer").toLowerCase().trim() || "customer",
-      can_see_price_gbp: ukTruthy_(r.can_see_price_gbp),
+      can_see_price_gbp: ukToBool_(r.can_see_price_gbp),
       name: String(r.name || "").trim(),
     };
   }

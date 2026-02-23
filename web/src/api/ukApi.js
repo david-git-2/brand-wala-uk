@@ -172,6 +172,15 @@ export const UK_API = {
   pricingModeDelete: (email, pricing_mode_id) =>
     post("uk_pricing_mode_delete", { email, pricing_mode_id }),
 
+  // ============================
+  // users (ADMIN ONLY)
+  // ============================
+  userGetAll: (email) => post("uk_user_get_all", { email }),
+  userGetOne: (email, target_email) => post("uk_user_get_one", { email, target_email }),
+  userCreate: (email, payload) => post("uk_user_create", { email, ...payload }),
+  userUpdate: (email, payload) => post("uk_user_update", { email, ...payload }),
+  userDelete: (email, user_email) => post("uk_user_delete", { email, user_email }),
+
   // ==========================================================
   // ===================== LEGACY (KEEP) ======================
   // Keep these so the UI doesn’t crash while you migrate screens.

@@ -1,40 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../auth/AuthProvider";
+
 import { UK_API } from "../../api/ukApi";
+import { useAuth } from "../../auth/AuthProvider";
 
-function Badge({ status }) {
-  const s = String(status || "").trim();
-  const cls =
-    s === "delivered"
-      ? "bg-emerald-50 text-emerald-700"
-      : s === "cancelled"
-      ? "bg-rose-50 text-rose-700"
-      : s === "submitted"
-      ? "bg-blue-50 text-blue-700"
-      : s === "priced"
-      ? "bg-amber-50 text-amber-700"
-      : "bg-slate-100 text-slate-700";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
-  return <span className={`rounded-full px-2 py-1 text-xs font-semibold ${cls}`}>{s || "—"}</span>;
-}
-
-function OrdersSkeleton({ rows = 6 }) {
+function OrdersSkeleton() {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-      <div className="divide-y divide-slate-100">
-        {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="p-4 flex items-center justify-between">
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-center justify-between gap-4 rounded-lg border p-3">
             <div className="space-y-2">
-              <div className="h-4 w-56 bg-slate-100 animate-pulse rounded" />
-              <div className="h-3 w-40 bg-slate-100 animate-pulse rounded" />
+              <Skeleton className="h-4 w-56" />
+              <Skeleton className="h-3 w-40" />
             </div>
-            <div className="h-8 w-24 bg-slate-100 animate-pulse rounded-xl" />
+            <Skeleton className="h-8 w-24" />
           </div>
         ))}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
+}
+
+function statusTone(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "delivered") return "default";
+  if (s === "cancelled") return "destructive";
+  return "secondary";
+}
+
+function intish(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : 0;
 }
 
 export default function CustomerOrders() {
@@ -44,8 +46,6 @@ export default function CustomerOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-
-  const canSeePrice = !!user?.can_see_price_gbp;
 
   useEffect(() => {
     let alive = true;
@@ -67,26 +67,26 @@ export default function CustomerOrders() {
     }
 
     load();
-    return () => (alive = false);
+    return () => {
+      alive = false;
+    };
   }, [user?.email]);
 
   const sorted = useMemo(() => {
-    // If your sheet has created_at in customer view later, we can sort by it.
-    // For now: keep as-is, but you can sort by order_id.
-    return [...orders].reverse();
+    const next = [...orders];
+    next.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    return next;
   }, [orders]);
 
   return (
     <div className="mx-auto w-full max-w-5xl p-4 md:p-6">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">My Orders</h1>
-          <p className="text-sm text-slate-500">View your submitted and processed orders.</p>
-        </div>
+      <div className="mb-4">
+        <h1 className="text-2xl font-semibold tracking-tight">My Orders</h1>
+        <p className="text-sm text-muted-foreground">Submitted, priced, and delivery progress.</p>
       </div>
 
       {err ? (
-        <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {err}
         </div>
       ) : null}
@@ -94,48 +94,34 @@ export default function CustomerOrders() {
       {loading ? (
         <OrdersSkeleton />
       ) : sorted.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-600">
-          No orders yet.
-        </div>
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">No orders yet.</CardContent>
+        </Card>
       ) : (
-        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-          <div className="divide-y divide-slate-100">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Orders</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
             {sorted.map((o) => (
-              <div key={o.order_id} className="p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div key={o.order_id} className="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <div className="truncate text-base font-semibold text-slate-900">
-                      {o.order_name || "Untitled"}
-                    </div>
-                    <Badge status={o.status} />
+                    <div className="truncate text-sm font-semibold">{o.order_name || "Untitled"}</div>
+                    <Badge variant={statusTone(o.status)}>{o.status || "-"}</Badge>
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    <span className="font-medium">Order ID:</span> {o.order_id}
-                    <span className="mx-2">•</span>
-                    <span className="font-medium">Qty:</span> {Number(o.total_order_quantity || 0)}
-                    <span className="mx-2">•</span>
-                    <span className="font-medium">Total (BDT):</span> {Number(o.total_cost_bdt || 0)}
-                    {canSeePrice && o.total_cost_gbp != null ? (
-                      <>
-                        <span className="mx-2">•</span>
-                        <span className="font-medium">Total (GBP):</span> £{Number(o.total_cost_gbp || 0).toFixed(2)}
-                      </>
-                    ) : null}
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {o.order_id} • Qty {intish(o.total_order_qty)} • Shipped {intish(o.total_shipped_qty)} • Remaining {intish(o.total_remaining_qty)} • Total Cost (BDT) {intish(o.total_total_cost_bdt)}
                   </div>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    onClick={() => navigate(`/customer/orders/${o.order_id}`)}
-                    className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                  >
-                    View
-                  </button>
-                </div>
+                <Button size="sm" onClick={() => navigate(`/customer/orders/${o.order_id}`)}>
+                  View
+                </Button>
               </div>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

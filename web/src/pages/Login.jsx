@@ -82,10 +82,24 @@ export default function Login() {
   const nav = useNavigate();
 
   const btnRef = useRef(null);
+  const btnWrapRef = useRef(null);
   const [status, setStatus] = useState("idle"); // idle | loading | ready | error
   const [err, setErr] = useState("");
+  const [googleBtnWidth, setGoogleBtnWidth] = useState(320);
 
   const isLoading = status === "loading";
+
+  useEffect(() => {
+    function calcWidth() {
+      const w = btnWrapRef.current?.clientWidth || 320;
+      // keep a sane minimum/maximum for GIS button rendering
+      const next = Math.max(220, Math.min(360, Math.floor(w - 24)));
+      setGoogleBtnWidth(next);
+    }
+    calcWidth();
+    window.addEventListener("resize", calcWidth);
+    return () => window.removeEventListener("resize", calcWidth);
+  }, []);
 
   // If already logged in -> go home
   useEffect(() => {
@@ -183,7 +197,7 @@ export default function Login() {
           window.google.accounts.id.renderButton(btnRef.current, {
             theme: "outline",
             size: "large",
-            width: 320,
+            width: googleBtnWidth,
           });
         }
 
@@ -200,7 +214,7 @@ export default function Login() {
     return () => {
       cancelled = true;
     };
-  }, [handleCredentialResponse, user]);
+  }, [googleBtnWidth, handleCredentialResponse, user]);
 
   return (
     <div className="min-h-[calc(100vh-0px)] bg-gradient-to-b from-slate-50 to-white">
@@ -241,8 +255,9 @@ export default function Login() {
                 </div>
 
                 <div
+                  ref={btnWrapRef}
                   className={[
-                    "flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-4",
+                    "flex w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4",
                     isLoading ? "opacity-70" : "opacity-100",
                   ].join(" ")}
                 >

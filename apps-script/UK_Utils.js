@@ -56,17 +56,21 @@ function ukToIso_(d) {
 
 function ukTruthy_(v) {
   const s = String(v ?? "").toLowerCase().trim();
-  return s === "true" || s === "1" || s === "yes" || s === "y";
+  return s === "true" || s === "ture" || s === "1" || s === "yes" || s === "y" || s === "active" || s === "enabled" || s === "on";
 }
 
 function ukToBool_(v) {
   if (v === true || v === false) return v;
   const s = String(v == null ? "" : v).trim().toLowerCase();
   if (!s) return false;
-  if (s === "true" || s === "yes" || s === "1") return true;
-  if (s === "false" || s === "no" || s === "0") return false;
+  if (s === "true" || s === "ture" || s === "yes" || s === "1" || s === "y" || s === "active" || s === "enabled" || s === "on") return true;
+  if (s === "false" || s === "no" || s === "0" || s === "n" || s === "inactive" || s === "disabled" || s === "off") return false;
   const n = Number(s);
   return isFinite(n) ? n !== 0 : false;
+}
+
+function ukBool01_(v) {
+  return ukToBool_(v) ? 1 : 0;
 }
 
 function ukNormKey_(k) {

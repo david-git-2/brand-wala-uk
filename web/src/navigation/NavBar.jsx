@@ -140,7 +140,7 @@ export default function NavBar() {
 
                     <div className="flex items-center justify-between px-2 py-1">
                       <span className="text-muted-foreground">
-                        Can see price
+                        Can see pound price
                       </span>
                       <span className="font-semibold text-foreground">
                         {canSeePrice ? "Yes" : "No"}
