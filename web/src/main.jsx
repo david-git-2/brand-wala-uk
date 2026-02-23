@@ -8,13 +8,13 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { CartProvider } from "./cart/CartProvider.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <HashRouter>
-      <AuthProvider>
-        <CartProvider>
-          <App />
-        </CartProvider>
-      </AuthProvider>
-    </HashRouter>
-  </React.StrictMode>
+  // <React.StrictMode>
+  <HashRouter>
+    <AuthProvider>
+      <CartProvider>
+        <App />
+      </CartProvider>
+    </AuthProvider>
+  </HashRouter>,
+  // </React.StrictMode>
 );

@@ -6,22 +6,29 @@ import CartSidebar from "./cart/CartSidebar";
 import NavBar from "./navigation/NavBar";
 
 function shouldShowCartUI(pathname) {
-  // Show cart UI only on these routes (add/remove as you like)
   const allowed = ["/products"];
   return allowed.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
+function shouldShowNav(pathname) {
+  const hiddenRoutes = ["/login"]; // add "/register", "/forgot-password" if needed
+  return !hiddenRoutes.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
 }
 
 export default function App() {
   const { pathname } = useLocation();
 
   const showCartUI = shouldShowCartUI(pathname);
+  const showNav = shouldShowNav(pathname);
 
   return (
     <>
-      <NavBar />
+      {showNav && <NavBar />}
+
       <AppRoutes />
 
-      {/* ✅ only render cart UI on selected routes */}
       {showCartUI && <CartSidebar />}
       {showCartUI && <CartFab />}
     </>

@@ -1,49 +1,39 @@
 // ============================
-// src/components/ProductCard.jsx  (UPDATED - correct Adding/Removing loading)
+// src/components/ProductCard.jsx  (SHADCN + THEME COLORS)
 // ============================
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useCart, minCaseSize } from "../cart/CartProvider";
 
+// shadcn/ui
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+// icons
+import {
+  Loader2,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Trash2,
+  ImageOff,
+} from "lucide-react";
+
 function toDirectGoogleImageUrl(url) {
   if (!url) return "";
-
   const m1 = url.match(/[?&]id=([^&]+)/);
   const m2 = url.match(/\/file\/d\/([^/]+)/);
   const fileId = m1?.[1] || m2?.[1];
-
   if (!fileId) return url;
   return `https://lh3.googleusercontent.com/d/${fileId}`;
 }
 
-function CartPlusIcon({ className = "" }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M6 6h15l-2 8H8L6 6Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="M6 6 5 3H2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="9" cy="19" r="1.5" fill="currentColor" />
-      <circle cx="17" cy="19" r="1.5" fill="currentColor" />
-      <path d="M12 10v4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M10 12h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function Spinner() {
-  return (
-    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-      <path
-        className="opacity-75"
-        d="M4 12a8 8 0 0 1 8-8"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+// optional: if you don't already have cn() from shadcn utils
+// (shadcn init usually creates src/lib/utils.js)
+import { cn } from "@/lib/utils";
 
 function buildProductId(p) {
   const pid = String(p?.product_id || p?.productId || "").trim();
@@ -88,8 +78,9 @@ export default function ProductCard({ product }) {
   const disableAdd = busy || !key;
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
-      <div className="flex h-40 items-center justify-center bg-slate-50">
+    <Card className="group overflow-hidden rounded-2xl border-border bg-card shadow-sm transition hover:shadow-md">
+      {/* Image */}
+      <div className="flex h-40 items-center justify-center bg-muted">
         {src ? (
           <img
             src={src}
@@ -107,91 +98,122 @@ export default function ProductCard({ product }) {
             }}
           />
         ) : (
-          <div className="text-sm text-slate-400">No image</div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ImageOff className="h-4 w-4" />
+            <span>No image</span>
+          </div>
         )}
       </div>
 
-      <div className="p-4">
-        <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+      <CardContent className="p-4">
+        {/* Brand */}
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {productWithId.brand}
         </div>
 
-        <h3 className="mt-1 line-clamp-2 text-sm font-semibold text-slate-900">
+        {/* Name */}
+        <h3 className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">
           {productWithId.name}
         </h3>
 
+        {/* Price + Case */}
         <div className="mt-3 flex items-center justify-between">
           {canSeePrice ? (
-            <span className="text-lg font-bold text-slate-900">
+            <span className="text-lg font-bold text-foreground">
               £{Number(productWithId.price ?? 0).toFixed(2)}
             </span>
           ) : (
-            <span className="text-sm font-medium text-slate-400">Login to see price</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              Login to see price
+            </span>
           )}
 
-          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+          <Badge variant="secondary" className="rounded-full">
             Case {step}
-          </span>
+          </Badge>
         </div>
 
+        {/* Actions */}
         {!inCart ? (
           <div className="mt-4 flex items-center justify-between gap-2">
-            <div className="flex items-center rounded-xl border border-slate-200 bg-white">
-              <button
+            {/* Quantity stepper */}
+            <div className="flex items-center rounded-xl border border-input bg-background">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 onClick={decLocal}
                 disabled={busy}
-                className="h-8 w-8 rounded-l-xl text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                className="h-9 w-9 rounded-l-xl"
                 title={`- ${step}`}
                 aria-label="Decrease quantity"
               >
-                −
-              </button>
+                <Minus className="h-4 w-4" />
+              </Button>
 
-              <div className="min-w-[54px] px-2 text-center text-sm font-semibold text-slate-900">
+              <div className="min-w-[56px] px-2 text-center text-sm font-semibold text-foreground">
                 {qty}
               </div>
 
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 onClick={incLocal}
                 disabled={busy}
-                className="h-8 w-8 rounded-r-xl text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                className="h-9 w-9 rounded-r-xl"
                 title={`+ ${step}`}
                 aria-label="Increase quantity"
               >
-                +
-              </button>
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
 
-            <button
+            {/* Add */}
+            <Button
+              type="button"
               onClick={() => add(productWithId, qty)}
               disabled={disableAdd}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              className={cn("rounded-xl", "gap-2")}
               title={key ? "Add to cart" : "Missing product_id"}
             >
-              {op === "add" ? <Spinner /> : <CartPlusIcon className="h-4 w-4" />}
+              {op === "add" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShoppingCart className="h-4 w-4" />
+              )}
               {op === "add" ? "Adding..." : "Add"}
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="mt-4 flex justify-end">
-            <button
+            <Button
+              type="button"
+              variant="destructive"
               onClick={() => remove(key)}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-100 transition hover:bg-rose-100 disabled:opacity-60"
+              className="rounded-xl gap-2"
               title="Remove from cart"
             >
-              {op === "remove" ? <Spinner /> : null}
+              {op === "remove" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
               {op === "remove" ? "Removing..." : "Remove"}
-            </button>
+            </Button>
           </div>
         )}
 
-        <div className="mt-3 text-xs text-slate-500">
+        <Separator className="my-3" />
+
+        {/* Meta */}
+        <div className="space-y-1 text-xs text-muted-foreground">
           <div>Product ID: {productWithId.product_id || "—"}</div>
-          <div>Barcode: {productWithId.barcode}</div>
-          <div>Origin: {productWithId.country_of_origin}</div>
+          <div>Barcode: {productWithId.barcode || "—"}</div>
+          <div>Origin: {productWithId.country_of_origin || "—"}</div>
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

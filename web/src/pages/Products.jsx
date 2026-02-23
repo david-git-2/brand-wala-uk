@@ -1,11 +1,24 @@
 // ============================
-// src/pages/Products.jsx  (UPDATED)
-// - Removed header user + logout (now in NavBar)
-// - Added skeleton loading state
+// src/pages/Products.jsx  (SHADCN + THEME COLORS)
 // ============================
 
 import { useEffect, useMemo, useState } from "react";
 import ProductCard from "../components/ProductCard";
+
+// shadcn/ui
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function buildProductId(p) {
   const pid = String(p?.product_id || p?.productId || "").trim();
@@ -20,31 +33,34 @@ function buildProductId(p) {
 
 function SkeletonCard() {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="h-40 bg-slate-100 animate-pulse" />
-      <div className="p-4">
-        <div className="h-3 w-20 rounded bg-slate-100 animate-pulse" />
+    <Card className="overflow-hidden rounded-2xl">
+      <div className="h-40 bg-muted">
+        <Skeleton className="h-full w-full" />
+      </div>
+      <CardContent className="p-4">
+        <Skeleton className="h-3 w-20" />
+
         <div className="mt-3 space-y-2">
-          <div className="h-4 w-full rounded bg-slate-100 animate-pulse" />
-          <div className="h-4 w-2/3 rounded bg-slate-100 animate-pulse" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
         </div>
 
         <div className="mt-4 flex items-center justify-between">
-          <div className="h-6 w-16 rounded bg-slate-100 animate-pulse" />
-          <div className="h-6 w-20 rounded-full bg-slate-100 animate-pulse" />
+          <Skeleton className="h-6 w-16" />
+          <Skeleton className="h-6 w-20 rounded-full" />
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-2">
-          <div className="h-8 w-28 rounded-xl bg-slate-100 animate-pulse" />
-          <div className="h-8 w-24 rounded-xl bg-slate-100 animate-pulse" />
+          <Skeleton className="h-8 w-28 rounded-xl" />
+          <Skeleton className="h-8 w-24 rounded-xl" />
         </div>
 
         <div className="mt-4 space-y-2">
-          <div className="h-3 w-40 rounded bg-slate-100 animate-pulse" />
-          <div className="h-3 w-28 rounded bg-slate-100 animate-pulse" />
+          <Skeleton className="h-3 w-40" />
+          <Skeleton className="h-3 w-28" />
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -61,9 +77,12 @@ export default function Products() {
 
     async function load() {
       try {
-        const res = await fetch(`${import.meta.env.BASE_URL}data/pc_data.json`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `${import.meta.env.BASE_URL}data/pc_data.json`,
+          {
+            cache: "no-store",
+          },
+        );
         const json = await res.json();
         if (!alive) return;
         setProducts(json.products || []);
@@ -120,112 +139,115 @@ export default function Products() {
 
   const totalCount = products.length;
   const showingCount = filtered.length;
-
   const skeletonCount = 20;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Content */}
+    <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-6 py-8">
-        {/* Filters (keep visible even while loading) */}
-        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            {/* Left side */}
-            <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
-              {/* Search */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">
-                  Search
-                </label>
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search name, brand, barcode, code, or product id..."
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
-                />
+        {/* Filters */}
+        <Card className="mb-6 rounded-2xl">
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              {/* Left side */}
+              <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
+                {/* Search */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Search
+                  </label>
+                  <Input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search name, brand, barcode, code, or product id..."
+                    className="rounded-xl"
+                  />
+                </div>
+
+                {/* Brand */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Brand
+                  </label>
+
+                  <Select value={brand} onValueChange={setBrand}>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder="Select brand" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {brands.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {b === "ALL" ? "All brands" : b}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              {/* Brand */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-slate-600">
-                  Brand
-                </label>
-                <select
-                  value={brand}
-                  onChange={(e) => setBrand(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+              {/* Right side: counts + clear */}
+              <div className="flex items-center justify-between gap-3 md:justify-end">
+                <div className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {loading ? "—" : showingCount}
+                  </span>{" "}
+                  showing <span className="opacity-60">/</span>{" "}
+                  <span className="font-medium text-foreground">
+                    {loading ? "—" : totalCount}
+                  </span>{" "}
+                  total
+                </div>
+
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    setQ("");
+                    setBrand("ALL");
+                  }}
                 >
-                  {brands.map((b) => (
-                    <option key={b} value={b}>
-                      {b === "ALL" ? "All brands" : b}
-                    </option>
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick brand pills */}
+            {!loading && (
+              <>
+                <Separator className="my-4" />
+                <div className="flex flex-wrap gap-2">
+                  {brands.slice(0, 12).map((b) => (
+                    <Button
+                      key={b}
+                      type="button"
+                      variant={brand === b ? "default" : "secondary"}
+                      className="h-7 rounded-full px-3 text-xs"
+                      onClick={() => setBrand(b)}
+                    >
+                      {b === "ALL" ? "All" : b}
+                    </Button>
                   ))}
-                </select>
-              </div>
-            </div>
 
-            {/* Right side: counts + clear */}
-            <div className="flex items-center justify-between gap-3 md:justify-end">
-              <div className="text-sm text-slate-600">
-                <span className="font-medium text-slate-900">
-                  {loading ? "—" : showingCount}
-                </span>{" "}
-                showing{" "}
-                <span className="text-slate-400">/</span>{" "}
-                <span className="font-medium text-slate-900">
-                  {loading ? "—" : totalCount}
-                </span>{" "}
-                total
-              </div>
-
-              <button
-                onClick={() => {
-                  setQ("");
-                  setBrand("ALL");
-                }}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          {/* Quick brand pills */}
-          {!loading && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {brands.slice(0, 12).map((b) => (
-                <button
-                  key={b}
-                  onClick={() => setBrand(b)}
-                  className={[
-                    "rounded-full px-3 py-1 text-xs font-medium transition",
-                    brand === b
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200",
-                  ].join(" ")}
-                >
-                  {b === "ALL" ? "All" : b}
-                </button>
-              ))}
-              {brands.length > 12 && (
-                <span className="self-center text-xs text-slate-400">
-                  +{brands.length - 12} more in dropdown
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+                  {brands.length > 12 && (
+                    <Badge variant="secondary" className="self-center">
+                      +{brands.length - 12} more in dropdown
+                    </Badge>
+                  )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Grid */}
         {loading ? (
-          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
             {Array.from({ length: skeletonCount }).map((_, i) => (
               <SkeletonCard key={i} />
             ))}
           </div>
         ) : (
           <>
-            <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
               {filtered.map((p) => (
                 <ProductCard key={buildProductId(p)} product={p} />
               ))}
@@ -233,9 +255,11 @@ export default function Products() {
 
             {/* Empty state */}
             {filtered.length === 0 && (
-              <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600">
-                No products match your filters.
-              </div>
+              <Card className="mt-10 rounded-2xl">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  No products match your filters.
+                </CardContent>
+              </Card>
             )}
           </>
         )}
