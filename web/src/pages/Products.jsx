@@ -213,14 +213,14 @@ export default function Products() {
 
         {/* Grid */}
         {loading ? (
-          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
+          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
             {Array.from({ length: skeletonCount }).map((_, i) => (
               <SkeletonCard key={i} />
             ))}
           </div>
         ) : (
           <>
-            <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
+            <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4">
               {filtered.map((p) => (
                 <ProductCard key={buildProductId(p)} product={p} />
               ))}

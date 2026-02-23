@@ -11,10 +11,11 @@ function shouldShowCartUI(pathname) {
 }
 
 function shouldShowNav(pathname) {
-  const hiddenRoutes = ["/login"]; // add "/register", "/forgot-password" if needed
-  return !hiddenRoutes.some(
-    (p) => pathname === p || pathname.startsWith(p + "/"),
-  );
+  const p = String(pathname || "").toLowerCase();
+  if (p === "/login" || p.startsWith("/login/")) return false;
+  // GitHub Pages/project-subpath safety (e.g. /brand-wala-uk/login)
+  if (p.endsWith("/login") || p.includes("/login/")) return false;
+  return true;
 }
 
 export default function App() {
