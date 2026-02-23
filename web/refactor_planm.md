@@ -832,25 +832,3 @@ In UK_Main.gs, delete routes or return:
 Exit criteria
 
 No one uses the old APIs.
-
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-apiKey: "AIzaSyDFFNHcZh7tome2FWfOeGAWd6fdyxLYBK8",
-authDomain: "brandwala-wholesale.firebaseapp.com",
-projectId: "brandwala-wholesale",
-storageBucket: "brandwala-wholesale.firebasestorage.app",
-messagingSenderId: "355661426123",
-appId: "1:355661426123:web:a9aff3f34aa22882ef1a4e",
-measurementId: "G-W4MHPDQ0XH"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
