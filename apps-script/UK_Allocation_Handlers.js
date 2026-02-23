@@ -1,112 +1,50 @@
-/************** UK_Allocation_Handlers.gs **************
-Step 7 — Allocation Create/Update/Delete/Get (admin)
-
-Implements:
-- UK_handleAllocationCreate(body)
-- UK_handleAllocationUpdate(body)
-- UK_handleAllocationDelete(body)
-- UK_handleAllocationGetForShipment(body)
-- UK_handleAllocationGetForOrder(body)
-
-Rules:
-- Admin only
-- Allocation requires: shipment_id, order_id OR order_item_id, allocated_qty
-- shipped_qty defaults to 0 on create
-- weights editable here (unit_product_weight, unit_package_weight)
-- Prevent allocating more than remaining is OPTIONAL here (Step 9 enforces over-ship strictly)
-
-Depends on Step 2:
-- UK_getMapStrict_(sheet, requiredCols)
-- UK_assertAdmin_(user)
-
-And Step 2/3 helper:
-- UK_makeId_(prefix)  (defined in Step 3 code; keep it in a shared utils file if needed)
-**************************************************/
+/************** UK_Allocation_Handlers.gs **************/
 
 function UK_handleAllocationCreate(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
-  const sh = ss.getSheetByName("uk_shipment_allocation");
-  if (!sh) throw new Error("Missing sheet: uk_shipment_allocation");
-
-  const required = [
-    "allocation_id",
-    "shipment_id",
-    "order_id",
-    "order_item_id",
-    "product_id",
-    "allocated_qty",
-    "shipped_qty",
-    "unit_product_weight",
-    "unit_package_weight",
-    "unit_total_weight",
-    "allocated_weight",
-    "shipped_weight",
-    "pricing_mode_id",
-    "buy_price_gbp",
-    "product_cost_gbp",
-    "product_cost_bdt",
-    "cargo_cost_gbp",
-    "cargo_cost_bdt",
-    "revenue_bdt",
-    "profit_bdt",
-    "total_cost_bdt"
-  ];
-  const m = UK_getMapStrict_(sh, required);
+  ukRequireFields_(body, ["shipment_id", "order_item_id", "allocated_qty"]);
 
   const shipment_id = String(body.shipment_id || "").trim();
-  if (!shipment_id) throw new Error("shipment_id is required");
-
-  // Accept either order_item_id (preferred) OR (order_id + item_sl) resolution externally
   const order_item_id = String(body.order_item_id || "").trim();
-  if (!order_item_id) throw new Error("order_item_id is required");
-
-  const order_id = String(body.order_id || "").trim() || order_item_id.split("-")[0]; // safe fallback
-  if (!order_id) throw new Error("order_id is required (or order_item_id like ORD_xxx-1)");
-
-  const allocated_qty = _numOrZero_(body.allocated_qty);
+  const allocated_qty = ukNum_(body.allocated_qty, 0);
+  const shipped_qty = ukNum_(body.shipped_qty, 0);
   if (allocated_qty <= 0) throw new Error("allocated_qty must be > 0");
+  if (shipped_qty < 0) throw new Error("shipped_qty cannot be negative");
 
-  const unit_product_weight = _numOrBlank_(body.unit_product_weight);
-  const unit_package_weight = _numOrBlank_(body.unit_package_weight);
+  const item = UK_allocGetOrderItemMeta_(order_item_id);
+  UK_assertNoOverShip_(order_item_id, shipped_qty, "");
 
-  const shipped_qty = (body.shipped_qty === undefined || body.shipped_qty === null || body.shipped_qty === "")
-    ? 0
-    : _numOrZero_(body.shipped_qty);
+  const sh = ukGetSheet_("uk_shipment_allocation");
+  const m = UK_getMapStrict_(sh, [
+    "allocation_id", "shipment_id", "order_id", "order_item_id", "product_id",
+    "allocated_qty", "shipped_qty", "unit_product_weight", "unit_package_weight",
+    "unit_total_weight", "allocated_weight", "shipped_weight",
+    "pricing_mode_id", "buy_price_gbp", "product_cost_gbp", "product_cost_bdt",
+    "cargo_cost_gbp", "cargo_cost_bdt", "revenue_bdt", "profit_bdt", "total_cost_bdt"
+  ]);
 
-  const allocation_id = UK_makeId_("ALC");
-
-  // product_id can be passed or derived later during recompute (Step 8)
-  const product_id = String(body.product_id || "").trim();
+  const upw = ukNumOrBlank_(body.unit_product_weight);
+  const upkg = ukNumOrBlank_(body.unit_package_weight);
+  const utw = ukNum_(upw, 0) + ukNum_(upkg, 0);
 
   const row = new Array(sh.getLastColumn()).fill("");
-  row[m.allocation_id] = allocation_id;
+  row[m.allocation_id] = String(body.allocation_id || ukMakeId_("ALC")).trim();
   row[m.shipment_id] = shipment_id;
-  row[m.order_id] = order_id;
+  row[m.order_id] = item.order_id;
   row[m.order_item_id] = order_item_id;
-  row[m.product_id] = product_id;
+  row[m.product_id] = item.product_id;
 
   row[m.allocated_qty] = allocated_qty;
   row[m.shipped_qty] = shipped_qty;
+  row[m.unit_product_weight] = upw;
+  row[m.unit_package_weight] = upkg;
+  row[m.unit_total_weight] = utw;
+  row[m.allocated_weight] = allocated_qty * utw;
+  row[m.shipped_weight] = shipped_qty * utw;
 
-  row[m.unit_product_weight] = unit_product_weight;
-  row[m.unit_package_weight] = unit_package_weight;
-
-  // derived weights (keep simple here; Step 8 recompute will re-derive anyway)
-  const unit_total_weight =
-    (_numOrZero_(unit_product_weight) + _numOrZero_(unit_package_weight));
-  row[m.unit_total_weight] = unit_total_weight;
-
-  row[m.allocated_weight] = allocated_qty * unit_total_weight;
-  row[m.shipped_weight] = shipped_qty * unit_total_weight;
-
-  // finance fields remain blank until recompute_shipment (Step 8)
   row[m.pricing_mode_id] = "";
   row[m.buy_price_gbp] = "";
   row[m.product_cost_gbp] = "";
@@ -118,44 +56,26 @@ function UK_handleAllocationCreate(body) {
   row[m.total_cost_bdt] = "";
 
   sh.appendRow(row);
-
-  return { success: true, allocation_id };
+  return { success: true, allocation_id: row[m.allocation_id] };
 }
 
 function UK_handleAllocationUpdate(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
   const allocation_id = String(body.allocation_id || "").trim();
   if (!allocation_id) throw new Error("allocation_id is required");
 
-  const sh = ss.getSheetByName("uk_shipment_allocation");
-  if (!sh) throw new Error("Missing sheet: uk_shipment_allocation");
-
-  const required = [
-    "allocation_id",
-    "shipment_id",
-    "order_id",
-    "order_item_id",
-    "product_id",
-    "allocated_qty",
-    "shipped_qty",
-    "unit_product_weight",
-    "unit_package_weight",
-    "unit_total_weight",
-    "allocated_weight",
-    "shipped_weight"
-  ];
-  const m = UK_getMapStrict_(sh, required);
+  const sh = ukGetSheet_("uk_shipment_allocation");
+  const m = UK_getMapStrict_(sh, [
+    "allocation_id", "shipment_id", "order_id", "order_item_id", "product_id",
+    "allocated_qty", "shipped_qty", "unit_product_weight", "unit_package_weight",
+    "unit_total_weight", "allocated_weight", "shipped_weight"
+  ]);
 
   const lastRow = sh.getLastRow();
-  if (lastRow < 2) throw new Error(`Allocation not found: ${allocation_id}`);
-
+  if (lastRow < 2) throw new Error("Allocation not found: " + allocation_id);
   const range = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn());
   const data = range.getValues();
 
@@ -163,229 +83,123 @@ function UK_handleAllocationUpdate(body) {
   for (let i = 0; i < data.length; i++) {
     if (String(data[i][m.allocation_id]) === allocation_id) { idx = i; break; }
   }
-  if (idx === -1) throw new Error(`Allocation not found: ${allocation_id}`);
+  if (idx === -1) throw new Error("Allocation not found: " + allocation_id);
 
   const row = data[idx];
+  const oldOrderItemId = String(row[m.order_item_id] || "");
+  if (body.order_item_id !== undefined && String(body.order_item_id || "") !== oldOrderItemId) {
+    throw new Error("order_item_id cannot be changed on update");
+  }
 
-  // Patch allowed fields
+  const newShipped = body.shipped_qty !== undefined ? ukNum_(body.shipped_qty, 0) : ukNum_(row[m.shipped_qty], 0);
+  if (newShipped < 0) throw new Error("shipped_qty cannot be negative");
+  UK_assertNoOverShip_(oldOrderItemId, newShipped, allocation_id);
+
   if (body.shipment_id !== undefined) row[m.shipment_id] = String(body.shipment_id || "").trim();
-  if (body.order_id !== undefined) row[m.order_id] = String(body.order_id || "").trim();
-  if (body.order_item_id !== undefined) row[m.order_item_id] = String(body.order_item_id || "").trim();
-  if (body.product_id !== undefined) row[m.product_id] = String(body.product_id || "").trim();
-
   if (body.allocated_qty !== undefined) {
-    const aq = _numOrZero_(body.allocated_qty);
-    if (aq < 0) throw new Error("allocated_qty cannot be negative");
-    row[m.allocated_qty] = aq;
+    const q = ukNum_(body.allocated_qty, 0);
+    if (q < 0) throw new Error("allocated_qty cannot be negative");
+    row[m.allocated_qty] = q;
   }
+  row[m.shipped_qty] = newShipped;
 
-  if (body.shipped_qty !== undefined) {
-    const sq = _numOrZero_(body.shipped_qty);
-    if (sq < 0) throw new Error("shipped_qty cannot be negative");
-    row[m.shipped_qty] = sq;
-  }
+  if (body.unit_product_weight !== undefined) row[m.unit_product_weight] = ukNumOrBlank_(body.unit_product_weight);
+  if (body.unit_package_weight !== undefined) row[m.unit_package_weight] = ukNumOrBlank_(body.unit_package_weight);
 
-  if (body.unit_product_weight !== undefined) row[m.unit_product_weight] = _numOrBlank_(body.unit_product_weight);
-  if (body.unit_package_weight !== undefined) row[m.unit_package_weight] = _numOrBlank_(body.unit_package_weight);
-
-  // Re-derive weights immediately
-  const unit_total_weight =
-    _numOrZero_(row[m.unit_product_weight]) + _numOrZero_(row[m.unit_package_weight]);
-  row[m.unit_total_weight] = unit_total_weight;
-
-  row[m.allocated_weight] = _numOrZero_(row[m.allocated_qty]) * unit_total_weight;
-  row[m.shipped_weight] = _numOrZero_(row[m.shipped_qty]) * unit_total_weight;
+  const utw = ukNum_(row[m.unit_product_weight], 0) + ukNum_(row[m.unit_package_weight], 0);
+  row[m.unit_total_weight] = utw;
+  row[m.allocated_weight] = ukNum_(row[m.allocated_qty], 0) * utw;
+  row[m.shipped_weight] = ukNum_(row[m.shipped_qty], 0) * utw;
 
   data[idx] = row;
   range.setValues(data);
 
-  return { success: true, allocation_id };
+  return { success: true, allocation_id: allocation_id };
 }
 
 function UK_handleAllocationDelete(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
   const allocation_id = String(body.allocation_id || "").trim();
   if (!allocation_id) throw new Error("allocation_id is required");
 
-  const sh = ss.getSheetByName("uk_shipment_allocation");
-  if (!sh) throw new Error("Missing sheet: uk_shipment_allocation");
+  const sh = ukGetSheet_("uk_shipment_allocation");
+  const m = UK_getMapStrict_(sh, ["allocation_id"]);
+  const found = ukFindRowIndexById_(sh, m.allocation_id, allocation_id);
+  if (found.rowIndex < 0) throw new Error("Allocation not found: " + allocation_id);
 
-  const required = ["allocation_id"];
-  const m = UK_getMapStrict_(sh, required);
-
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) throw new Error(`Allocation not found: ${allocation_id}`);
-
-  const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][m.allocation_id]) === allocation_id) {
-      sh.deleteRow(i + 2);
-      return { success: true, allocation_id };
-    }
-  }
-  throw new Error(`Allocation not found: ${allocation_id}`);
+  sh.deleteRow(found.rowIndex);
+  return { success: true, allocation_id: allocation_id };
 }
 
 function UK_handleAllocationGetForShipment(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
   const shipment_id = String(body.shipment_id || "").trim();
   if (!shipment_id) throw new Error("shipment_id is required");
 
-  const sh = ss.getSheetByName("uk_shipment_allocation");
-  if (!sh) throw new Error("Missing sheet: uk_shipment_allocation");
+  const sh = ukGetSheet_("uk_shipment_allocation");
+  const rows = ukReadObjects_(sh).rows.filter(function(r) { return String(r.shipment_id || "") === shipment_id; });
 
-  const required = [
-    "allocation_id",
-    "shipment_id",
-    "order_id",
-    "order_item_id",
-    "product_id",
-    "allocated_qty",
-    "shipped_qty",
-    "unit_product_weight",
-    "unit_package_weight",
-    "unit_total_weight",
-    "allocated_weight",
-    "shipped_weight",
-    "pricing_mode_id",
-    "buy_price_gbp",
-    "product_cost_gbp",
-    "product_cost_bdt",
-    "cargo_cost_gbp",
-    "cargo_cost_bdt",
-    "revenue_bdt",
-    "profit_bdt",
-    "total_cost_bdt"
-  ];
-  const m = UK_getMapStrict_(sh, required);
-
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return { success: true, shipment_id, allocations: [] };
-
-  const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-
-  const out = [];
-  for (let i = 0; i < data.length; i++) {
-    const r = data[i];
-    if (String(r[m.shipment_id]) !== shipment_id) continue;
-
-    out.push(_allocToObj_(r, m));
-  }
-
-  return { success: true, shipment_id, allocations: out };
+  return { success: true, shipment_id: shipment_id, allocations: rows };
 }
 
 function UK_handleAllocationGetForOrder(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
   const order_id = String(body.order_id || "").trim();
   if (!order_id) throw new Error("order_id is required");
 
-  const sh = ss.getSheetByName("uk_shipment_allocation");
-  if (!sh) throw new Error("Missing sheet: uk_shipment_allocation");
+  const sh = ukGetSheet_("uk_shipment_allocation");
+  const rows = ukReadObjects_(sh).rows.filter(function(r) { return String(r.order_id || "") === order_id; });
 
-  const required = [
-    "allocation_id",
-    "shipment_id",
-    "order_id",
-    "order_item_id",
-    "product_id",
-    "allocated_qty",
-    "shipped_qty",
-    "unit_product_weight",
-    "unit_package_weight",
-    "unit_total_weight",
-    "allocated_weight",
-    "shipped_weight",
-    "pricing_mode_id",
-    "buy_price_gbp",
-    "product_cost_gbp",
-    "product_cost_bdt",
-    "cargo_cost_gbp",
-    "cargo_cost_bdt",
-    "revenue_bdt",
-    "profit_bdt",
-    "total_cost_bdt"
-  ];
-  const m = UK_getMapStrict_(sh, required);
-
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) return { success: true, order_id, allocations: [] };
-
-  const data = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn()).getValues();
-
-  const out = [];
-  for (let i = 0; i < data.length; i++) {
-    const r = data[i];
-    if (String(r[m.order_id]) !== order_id) continue;
-
-    out.push(_allocToObj_(r, m));
-  }
-
-  return { success: true, order_id, allocations: out };
+  return { success: true, order_id: order_id, allocations: rows };
 }
 
-/************** helpers **************/
+function UK_handleAllocationSuggestForShipment(body) {
+  body = body || {};
+  const user = ukRequireActiveUserOrThrow_(body);
+  UK_assertAdmin_(user);
 
-function _allocToObj_(r, m) {
+  const shipment_id = String(body.shipment_id || "").trim();
+  const order_id = String(body.order_id || "").trim();
+  if (!shipment_id) throw new Error("shipment_id is required");
+  if (!order_id) throw new Error("order_id is required");
+
+  const shItems = ukGetSheet_("uk_order_items");
+  const mI = UK_getMapStrict_(shItems, ["order_item_id", "order_id", "ordered_quantity", "shipped_qty_total"]);
+
+  const rows = ukReadObjects_(shItems).rows.filter(function(r) { return String(r.order_id || "") === order_id; });
+
+  const suggestions = rows
+    .map(function(r) {
+      const remaining = ukNum_(r.ordered_quantity, 0) - ukNum_(r.shipped_qty_total, 0);
+      return {
+        shipment_id: shipment_id,
+        order_id: order_id,
+        order_item_id: r.order_item_id,
+        allocated_qty: remaining > 0 ? remaining : 0,
+        shipped_qty: 0,
+      };
+    })
+    .filter(function(x) { return x.allocated_qty > 0; });
+
+  return { success: true, shipment_id: shipment_id, order_id: order_id, suggestions: suggestions };
+}
+
+function UK_allocGetOrderItemMeta_(order_item_id) {
+  const shItems = ukGetSheet_("uk_order_items");
+  const mI = UK_getMapStrict_(shItems, ["order_item_id", "order_id", "product_id"]);
+  const row = ukFindRowById_(shItems, mI.order_item_id, order_item_id);
+  if (!row) throw new Error("order_item_id not found: " + order_item_id);
   return {
-    allocation_id: r[m.allocation_id],
-    shipment_id: r[m.shipment_id],
-    order_id: r[m.order_id],
-    order_item_id: r[m.order_item_id],
-    product_id: r[m.product_id],
-
-    allocated_qty: r[m.allocated_qty],
-    shipped_qty: r[m.shipped_qty],
-
-    unit_product_weight: r[m.unit_product_weight],
-    unit_package_weight: r[m.unit_package_weight],
-    unit_total_weight: r[m.unit_total_weight],
-    allocated_weight: r[m.allocated_weight],
-    shipped_weight: r[m.shipped_weight],
-
-    pricing_mode_id: r[m.pricing_mode_id],
-    buy_price_gbp: r[m.buy_price_gbp],
-    product_cost_gbp: r[m.product_cost_gbp],
-    product_cost_bdt: r[m.product_cost_bdt],
-    cargo_cost_gbp: r[m.cargo_cost_gbp],
-    cargo_cost_bdt: r[m.cargo_cost_bdt],
-    revenue_bdt: r[m.revenue_bdt],
-    profit_bdt: r[m.profit_bdt],
-    total_cost_bdt: r[m.total_cost_bdt]
+    order_id: row[mI.order_id],
+    product_id: row[mI.product_id],
   };
-}
-
-function _numOrBlank_(v) {
-  if (v === "" || v === null || v === undefined) return "";
-  const n = Number(String(v).trim());
-  if (!isFinite(n)) return "";
-  return n;
-}
-
-function _numOrZero_(v) {
-  if (v === "" || v === null || v === undefined) return 0;
-  const n = Number(String(v).trim());
-  if (!isFinite(n)) return 0;
-  return n;
 }

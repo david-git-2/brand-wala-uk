@@ -1,153 +1,72 @@
-/************** UK_Orders_Edit.gs **************
-Step 11 — Lockdown edits (order/item edit endpoints)
+/************** UK_Orders_Status.gs **************/
 
-Implements:
-- UK_handleUpdateOrder(body)       // header only
-- UK_handleUpdateOrderItems(body)  // guarded by role+status+field list
-- UK_handleDeleteOrderItems(body)  // guarded (admin only unless draft customer)
-- UK_handleDeleteOrder(body)       // admin only (or draft owner if you want)
-
-Key rule from your spec:
-- Customer editable:
-  - draft: orders.order_name; order_items ordered_quantity (+ add/remove items)
-  - priced/under_review: customer_unit_* only (based on pricing_mode)
-- Admin editable:
-  - most statuses: profit_rate, offered_unit_*, final_unit_*, pricing_mode_id
-  - shipment_allocation edits happen elsewhere
-  - processing: DO NOT allow item edits (only allocation shipped_qty via allocation update)
-
-Depends on Step 2:
-- UK_getMapStrict_(sheet, requiredCols)
-- UK_assertAdmin_(user)
-- UK_roundGBP_(n), UK_roundBDT_(n)
-- UK_assertNotDelivered_(status)
-**************************************************/
-
-function UK_handleUpdateOrder(body) {
+function UK_handleOrderSubmit(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "customer").trim() };
-
-  const email = String(body.email || user.email || "").trim();
-  const role = String(user.role || "customer").toLowerCase();
-
+  const user = ukRequireActiveUserOrThrow_(body);
   const order_id = String(body.order_id || "").trim();
   if (!order_id) throw new Error("order_id is required");
 
-  const patch = body.patch || {};
-  if (!patch || typeof patch !== "object") throw new Error("patch object is required");
+  const meta = UK_assertOrderExists_(order_id);
+  const creator = String(meta.creator_email || "").toLowerCase();
+  const email = String(user.email || "").toLowerCase();
 
-  const shOrders = ss.getSheetByName("uk_orders");
-  if (!shOrders) throw new Error("Missing sheet: uk_orders");
+  if (!ukIsAdmin_(user) && creator !== email) throw new Error("Forbidden: not your order");
 
-  const req = ["order_id", "order_name", "creator_email", "status", "updated_at"];
-  const m = UK_getMapStrict_(shOrders, req);
+  const status = String(meta.status || "").toLowerCase();
+  const role = ukIsAdmin_(user) ? "admin" : "customer";
+  UK_assertStatusTransition_(status, "submitted", role);
 
-  const found = _findRowIndexById_(shOrders, m.order_id, order_id);
-  if (found.rowIndex < 0) throw new Error(`Order not found: ${order_id}`);
-
-  const status = String(found.row[m.status] || "").trim().toLowerCase();
-  UK_assertNotDelivered_(status);
-
-  const creatorEmail = String(found.row[m.creator_email] || "").trim().toLowerCase();
-  const isOwner = creatorEmail === email.toLowerCase();
-
-  // Permissions for header edit:
-  // - customer can edit order_name only in draft and only if owner
-  // - admin can edit order_name in most statuses except delivered
-  if (role !== "admin") {
-    if (!isOwner) throw new Error("Forbidden: not your order");
-    if (status !== "draft") throw new Error(`Order header is read-only in status: ${status}`);
-  } else {
-    if (status === "delivered") throw new Error("Order is delivered and locked");
+  const shItems = ukGetSheet_("uk_order_items");
+  const mI = UK_getMapStrict_(shItems, ["order_id", "ordered_quantity"]);
+  const rows = ukReadObjects_(shItems).rows.filter(function(r) { return String(r.order_id) === order_id; });
+  if (!rows.length) throw new Error("Cannot submit order without items");
+  for (let i = 0; i < rows.length; i++) {
+    if (ukNum_(rows[i].ordered_quantity, 0) <= 0) throw new Error("All ordered_quantity must be > 0");
   }
 
-  // Only allow order_name patch here
-  if (patch.order_name !== undefined) {
-    shOrders.getRange(found.rowIndex, m.order_name + 1).setValue(String(patch.order_name || "").trim());
-  } else {
-    throw new Error("Only patch.order_name is supported in uk_update_order");
-  }
-
-  shOrders.getRange(found.rowIndex, m.updated_at + 1).setValue(new Date());
-
-  return { success: true, order_id };
+  UK_statusSetOrderStatus_(order_id, "submitted");
+  return { success: true, order_id: order_id, status: "submitted" };
 }
 
-function UK_handleUpdateOrderItems(body) {
+function UK_handleOrderPrice(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "customer").trim() };
-
-  const email = String(body.email || user.email || "").trim();
-  const role = String(user.role || "customer").toLowerCase();
+  const user = ukRequireActiveUserOrThrow_(body);
+  UK_assertAdmin_(user);
 
   const order_id = String(body.order_id || "").trim();
+  const pricing_mode_id = String(body.pricing_mode_id || "").trim();
+  const defaultProfit = ukNumOrBlank_(body.profit_rate);
+
   if (!order_id) throw new Error("order_id is required");
+  if (!pricing_mode_id) throw new Error("pricing_mode_id is required");
 
-  const itemsPatch = body.items || [];
-  if (!Array.isArray(itemsPatch) || !itemsPatch.length) throw new Error("items[] patches are required");
+  const meta = UK_assertOrderExists_(order_id);
+  const from = String(meta.status || "").toLowerCase();
+  UK_assertStatusTransition_(from, "priced", "admin");
 
-  // Load order to get status + owner
-  const shOrders = ss.getSheetByName("uk_orders");
-  const shItems = ss.getSheetByName("uk_order_items");
-  if (!shOrders) throw new Error("Missing sheet: uk_orders");
-  if (!shItems) throw new Error("Missing sheet: uk_order_items");
+  const shPM = ukGetSheet_("uk_pricing_modes");
+  const mPM = UK_getMapStrict_(shPM, ["pricing_mode_id", "currency", "active"]);
+  const pmRow = ukFindRowById_(shPM, mPM.pricing_mode_id, pricing_mode_id);
+  if (!pmRow) throw new Error("Pricing mode not found: " + pricing_mode_id);
+  if (!ukToBool_(pmRow[mPM.active])) throw new Error("Pricing mode inactive: " + pricing_mode_id);
+  const pmCurrency = String(pmRow[mPM.currency] || "").toUpperCase();
 
-  const mO = UK_getMapStrict_(shOrders, ["order_id", "status", "creator_email"]);
-  const oFound = _findRowIndexById_(shOrders, mO.order_id, order_id);
-  if (oFound.rowIndex < 0) throw new Error(`Order not found: ${order_id}`);
-
-  const status = String(oFound.row[mO.status] || "").trim().toLowerCase();
-  UK_assertNotDelivered_(status);
-
-  const creatorEmail = String(oFound.row[mO.creator_email] || "").trim().toLowerCase();
-  const isOwner = creatorEmail === email.toLowerCase();
-
-  if (role !== "admin" && !isOwner) throw new Error("Forbidden: not your order");
-
-  // Hard block item edits during processing/partially_delivered/delivered:
-  // (processing item edits are disallowed per your spec; shipped_qty happens via allocation update)
-  if (status === "processing" || status === "partially_delivered") {
-    throw new Error(`Order items are read-only in status: ${status} (update allocations instead)`);
-  }
-
-  // Map patches by order_item_id
-  const patchById = {};
-  itemsPatch.forEach(p => {
-    if (!p || !p.order_item_id) throw new Error("Each item patch must include order_item_id");
-    patchById[String(p.order_item_id).trim()] = p;
+  const perItem = {};
+  (Array.isArray(body.items) ? body.items : []).forEach(function(it) {
+    if (!it || !it.order_item_id) return;
+    perItem[String(it.order_item_id).trim()] = it;
   });
 
-  // Required cols on items
-  const itemReq = [
-    "order_item_id",
-    "order_id",
-    "ordered_quantity",
-    "pricing_mode_id",
-    "profit_rate",
-    "offered_unit_gbp",
-    "customer_unit_gbp",
-    "final_unit_gbp",
-    "offered_unit_bdt",
-    "customer_unit_bdt",
-    "final_unit_bdt",
-    "buy_price_gbp"
-  ];
-  const mI = UK_getMapStrict_(shItems, itemReq);
+  const shItems = ukGetSheet_("uk_order_items");
+  const mI = UK_getMapStrict_(shItems, [
+    "order_item_id", "order_id", "pricing_mode_id", "profit_rate", "buy_price_gbp", "offered_unit_gbp", "offered_unit_bdt"
+  ]);
 
   const lastRow = shItems.getLastRow();
   if (lastRow < 2) throw new Error("No order_items rows found");
 
   const range = shItems.getRange(2, 1, lastRow - 1, shItems.getLastColumn());
   const data = range.getValues();
-
   let changed = false;
 
   for (let i = 0; i < data.length; i++) {
@@ -155,229 +74,201 @@ function UK_handleUpdateOrderItems(body) {
     if (String(r[mI.order_id]) !== order_id) continue;
 
     const oid = String(r[mI.order_item_id] || "").trim();
-    const patch = patchById[oid];
-    if (!patch) continue;
+    const ov = perItem[oid] || {};
 
-    // Field-level allowlist by role+status
-    if (role !== "admin") {
-      // CUSTOMER rules:
-      if (status === "draft") {
-        // can edit ordered_quantity only (and add/remove items via separate endpoints)
-        _assertOnlyFields_(patch, ["order_item_id", "ordered_quantity"]);
-        if (patch.ordered_quantity !== undefined) {
-          const q = _numOrZero_(patch.ordered_quantity);
-          if (q <= 0) throw new Error("ordered_quantity must be > 0");
-          r[mI.ordered_quantity] = q;
-          changed = true;
-        }
-      } else if (status === "priced" || status === "under_review") {
-        // can edit ONLY customer_unit_* (one or both)
-        _assertOnlyFields_(patch, ["order_item_id", "customer_unit_gbp", "customer_unit_bdt"]);
+    const pmId = String(ov.pricing_mode_id !== undefined ? ov.pricing_mode_id : pricing_mode_id).trim();
+    const pr = ov.profit_rate !== undefined ? ukNumOrBlank_(ov.profit_rate) : defaultProfit;
+    const buy = ukNum_(r[mI.buy_price_gbp], 0);
 
-        if (patch.customer_unit_gbp !== undefined) {
-          r[mI.customer_unit_gbp] = UK_roundGBP_(patch.customer_unit_gbp);
-          changed = true;
-        }
-        if (patch.customer_unit_bdt !== undefined) {
-          r[mI.customer_unit_bdt] = UK_roundBDT_(patch.customer_unit_bdt);
-          changed = true;
-        }
-      } else {
-        throw new Error(`Customer cannot edit items in status: ${status}`);
-      }
+    r[mI.pricing_mode_id] = pmId;
+    if (pr !== "") r[mI.profit_rate] = pr;
+
+    if (pmCurrency === "GBP") {
+      const offered = UK_roundGBP_(buy * (1 + ukNum_(pr, 0)));
+      r[mI.offered_unit_gbp] = offered;
     } else {
-      // ADMIN rules:
-      // In most statuses except delivered/processing: pricing_mode_id, profit_rate, offered_unit_*, final_unit_*.
-      // We keep buy_price_gbp read-only here (product catalog / ingestion typically controls it).
-      if (status === "delivered") throw new Error("Order is delivered and locked");
-
-      const allowed = [
-        "order_item_id",
-        "pricing_mode_id",
-        "profit_rate",
-        "offered_unit_gbp",
-        "offered_unit_bdt",
-        "final_unit_gbp",
-        "final_unit_bdt"
-      ];
-
-      _assertOnlyFields_(patch, allowed);
-
-      if (patch.pricing_mode_id !== undefined) r[mI.pricing_mode_id] = String(patch.pricing_mode_id || "").trim();
-      if (patch.profit_rate !== undefined) r[mI.profit_rate] = _numOrBlank_(patch.profit_rate);
-
-      if (patch.offered_unit_gbp !== undefined) r[mI.offered_unit_gbp] = UK_roundGBP_(patch.offered_unit_gbp);
-      if (patch.final_unit_gbp !== undefined) r[mI.final_unit_gbp] = UK_roundGBP_(patch.final_unit_gbp);
-
-      if (patch.offered_unit_bdt !== undefined) r[mI.offered_unit_bdt] = UK_roundBDT_(patch.offered_unit_bdt);
-      if (patch.final_unit_bdt !== undefined) r[mI.final_unit_bdt] = UK_roundBDT_(patch.final_unit_bdt);
-
-      changed = true;
+      if (mI.offered_unit_bdt != null && r[mI.offered_unit_bdt] === "") r[mI.offered_unit_bdt] = "";
     }
+
+    changed = true;
   }
 
   if (changed) range.setValues(data);
+  UK_statusSetOrderStatus_(order_id, "priced");
 
-  return { success: true, order_id };
+  return { success: true, order_id: order_id, status: "priced" };
 }
 
-/**
- * Delete order_items rows.
- * Recommended rules:
- * - Customer can delete items only in draft and only if owner
- * - Admin can delete items in draft/submitted/priced/under_review/cancelled (avoid deleting after allocations exist)
- */
-function UK_handleDeleteOrderItems(body) {
+function UK_handleOrderCustomerCounter(body) {
   body = body || {};
-  const ss = ukOpenSS_();
+  const user = ukRequireActiveUserOrThrow_(body);
+  const order_id = String(body.order_id || "").trim();
+  const items = Array.isArray(body.items) ? body.items : [];
 
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "customer").trim() };
+  if (!order_id) throw new Error("order_id is required");
+  if (!items.length) throw new Error("items[] is required");
 
-  const email = String(body.email || user.email || "").trim();
-  const role = String(user.role || "customer").toLowerCase();
+  const meta = UK_assertOrderExists_(order_id);
+  const creator = String(meta.creator_email || "").toLowerCase();
+  if (creator !== String(user.email || "").toLowerCase()) throw new Error("Forbidden: not your order");
 
+  const from = String(meta.status || "").toLowerCase();
+  UK_assertStatusTransition_(from, "under_review", "customer");
+
+  const shItems = ukGetSheet_("uk_order_items");
+  const mI = UK_getMapStrict_(shItems, ["order_item_id", "order_id", "pricing_mode_id", "customer_unit_gbp", "customer_unit_bdt"]);
+
+  const byId = {};
+  items.forEach(function(it) { if (it && it.order_item_id) byId[String(it.order_item_id).trim()] = it; });
+
+  const lastRow = shItems.getLastRow();
+  if (lastRow < 2) throw new Error("No order_items rows found");
+
+  const range = shItems.getRange(2, 1, lastRow - 1, shItems.getLastColumn());
+  const data = range.getValues();
+  let changed = false;
+
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    if (String(r[mI.order_id]) !== order_id) continue;
+
+    const oid = String(r[mI.order_item_id] || "").trim();
+    const u = byId[oid];
+    if (!u) continue;
+
+    const pm = String(r[mI.pricing_mode_id] || "").toUpperCase();
+    if (pm.indexOf("GBP") >= 0) {
+      if (u.customer_unit_gbp === undefined) throw new Error("customer_unit_gbp required for GBP mode on " + oid);
+      r[mI.customer_unit_gbp] = UK_roundGBP_(u.customer_unit_gbp);
+    } else if (pm.indexOf("BDT") >= 0) {
+      if (u.customer_unit_bdt === undefined) throw new Error("customer_unit_bdt required for BDT mode on " + oid);
+      r[mI.customer_unit_bdt] = UK_roundBDT_(u.customer_unit_bdt);
+    } else {
+      if (u.customer_unit_gbp !== undefined) r[mI.customer_unit_gbp] = UK_roundGBP_(u.customer_unit_gbp);
+      if (u.customer_unit_bdt !== undefined) r[mI.customer_unit_bdt] = UK_roundBDT_(u.customer_unit_bdt);
+    }
+
+    changed = true;
+  }
+
+  if (changed) range.setValues(data);
+  UK_statusSetOrderStatus_(order_id, "under_review");
+
+  return { success: true, order_id: order_id, status: "under_review" };
+}
+
+function UK_handleOrderAcceptOffer(body) {
+  body = body || {};
+  const user = ukRequireActiveUserOrThrow_(body);
   const order_id = String(body.order_id || "").trim();
   if (!order_id) throw new Error("order_id is required");
 
-  const order_item_ids = body.order_item_ids || [];
-  if (!Array.isArray(order_item_ids) || !order_item_ids.length) {
-    throw new Error("order_item_ids[] is required");
-  }
+  const meta = UK_assertOrderExists_(order_id);
+  const creator = String(meta.creator_email || "").toLowerCase();
+  if (creator !== String(user.email || "").toLowerCase()) throw new Error("Forbidden: not your order");
 
-  // Load order
-  const shOrders = ss.getSheetByName("uk_orders");
-  const shItems = ss.getSheetByName("uk_order_items");
-  if (!shOrders) throw new Error("Missing sheet: uk_orders");
-  if (!shItems) throw new Error("Missing sheet: uk_order_items");
+  UK_assertStatusTransition_(String(meta.status || "").toLowerCase(), "finalized", "customer");
+  UK_statusSetOrderStatus_(order_id, "finalized");
 
-  const mO = UK_getMapStrict_(shOrders, ["order_id", "status", "creator_email"]);
-  const oFound = _findRowIndexById_(shOrders, mO.order_id, order_id);
-  if (oFound.rowIndex < 0) throw new Error(`Order not found: ${order_id}`);
-
-  const status = String(oFound.row[mO.status] || "").trim().toLowerCase();
-  UK_assertNotDelivered_(status);
-
-  const creatorEmail = String(oFound.row[mO.creator_email] || "").trim().toLowerCase();
-  const isOwner = creatorEmail === email.toLowerCase();
-
-  if (role !== "admin") {
-    if (!isOwner) throw new Error("Forbidden: not your order");
-    if (status !== "draft") throw new Error(`Cannot delete items in status: ${status}`);
-  } else {
-    // admin: block deletes during processing/partial/delivered
-    if (status === "processing" || status === "partially_delivered") {
-      throw new Error(`Cannot delete items in status: ${status}`);
-    }
-  }
-
-  const mI = UK_getMapStrict_(shItems, ["order_item_id", "order_id"]);
-  const lastRow = shItems.getLastRow();
-  if (lastRow < 2) return { success: true, deleted: 0 };
-
-  const idsSet = {};
-  order_item_ids.forEach(id => { idsSet[String(id).trim()] = true; });
-
-  // Delete bottom-up by sheet row
-  const data = shItems.getRange(2, 1, lastRow - 1, shItems.getLastColumn()).getValues();
-  const toDelete = [];
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][mI.order_id]) !== order_id) continue;
-    const oid = String(data[i][mI.order_item_id] || "").trim();
-    if (idsSet[oid]) toDelete.push(i + 2);
-  }
-
-  for (let i = toDelete.length - 1; i >= 0; i--) {
-    shItems.deleteRow(toDelete[i]);
-  }
-
-  return { success: true, deleted: toDelete.length };
+  return { success: true, order_id: order_id, status: "finalized" };
 }
 
-/**
- * Delete an entire order.
- * Recommended: admin only (safe). If you want draft-owner delete, add it later.
- */
-function UK_handleDeleteOrder(body) {
+function UK_handleOrderFinalize(body) {
   body = body || {};
-  const ss = ukOpenSS_();
-
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
   const order_id = String(body.order_id || "").trim();
   if (!order_id) throw new Error("order_id is required");
 
-  const shOrders = ss.getSheetByName("uk_orders");
-  const shItems = ss.getSheetByName("uk_order_items");
-  if (!shOrders) throw new Error("Missing sheet: uk_orders");
-  if (!shItems) throw new Error("Missing sheet: uk_order_items");
+  const meta = UK_assertOrderExists_(order_id);
+  UK_assertStatusTransition_(String(meta.status || "").toLowerCase(), "finalized", "admin");
 
-  const mO = UK_getMapStrict_(shOrders, ["order_id", "status"]);
-  const oFound = _findRowIndexById_(shOrders, mO.order_id, order_id);
-  if (oFound.rowIndex < 0) throw new Error(`Order not found: ${order_id}`);
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (items.length) {
+    const shItems = ukGetSheet_("uk_order_items");
+    const mI = UK_getMapStrict_(shItems, ["order_item_id", "order_id", "final_unit_gbp", "final_unit_bdt"]);
+    const byId = {};
+    items.forEach(function(it) { if (it && it.order_item_id) byId[String(it.order_item_id).trim()] = it; });
 
-  const status = String(oFound.row[mO.status] || "").trim().toLowerCase();
-  UK_assertNotDelivered_(status);
+    const lastRow = shItems.getLastRow();
+    if (lastRow >= 2) {
+      const range = shItems.getRange(2, 1, lastRow - 1, shItems.getLastColumn());
+      const data = range.getValues();
+      let changed = false;
 
-  // Block delete if processing/partial (recommended)
-  if (status === "processing" || status === "partially_delivered") {
-    throw new Error(`Cannot delete order in status: ${status}`);
-  }
+      for (let i = 0; i < data.length; i++) {
+        const r = data[i];
+        if (String(r[mI.order_id]) !== order_id) continue;
+        const oid = String(r[mI.order_item_id] || "").trim();
+        const u = byId[oid];
+        if (!u) continue;
 
-  // Delete items first (bottom-up)
-  const mI = UK_getMapStrict_(shItems, ["order_item_id", "order_id"]);
-  const itemsLastRow = shItems.getLastRow();
-  if (itemsLastRow >= 2) {
-    const itemsData = shItems.getRange(2, 1, itemsLastRow - 1, shItems.getLastColumn()).getValues();
-    const toDeleteItems = [];
-    for (let i = 0; i < itemsData.length; i++) {
-      if (String(itemsData[i][mI.order_id]) === order_id) toDeleteItems.push(i + 2);
-    }
-    for (let i = toDeleteItems.length - 1; i >= 0; i--) shItems.deleteRow(toDeleteItems[i]);
-  }
-
-  // Delete order row
-  shOrders.deleteRow(oFound.rowIndex);
-
-  return { success: true, order_id };
-}
-
-/************** helpers **************/
-
-function _assertOnlyFields_(obj, allowed) {
-  const allow = {};
-  allowed.forEach(k => allow[k] = true);
-  Object.keys(obj).forEach(k => {
-    if (!allow[k]) throw new Error(`Field not allowed: ${k}`);
-  });
-}
-
-function _findRowIndexById_(sheet, idColIdx0, idVal) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { rowIndex: -1, row: null };
-  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][idColIdx0]) === String(idVal)) {
-      return { rowIndex: i + 2, row: data[i] };
+        if (u.final_unit_gbp !== undefined) r[mI.final_unit_gbp] = UK_roundGBP_(u.final_unit_gbp);
+        if (u.final_unit_bdt !== undefined) r[mI.final_unit_bdt] = UK_roundBDT_(u.final_unit_bdt);
+        changed = true;
+      }
+      if (changed) range.setValues(data);
     }
   }
-  return { rowIndex: -1, row: null };
+
+  UK_statusSetOrderStatus_(order_id, "finalized");
+  return { success: true, order_id: order_id, status: "finalized" };
 }
 
-function _numOrZero_(v) {
-  if (v === "" || v === null || v === undefined) return 0;
-  const n = Number(String(v).trim());
-  if (!isFinite(n)) return 0;
-  return n;
+function UK_handleOrderStartProcessing(body) {
+  body = body || {};
+  const user = ukRequireActiveUserOrThrow_(body);
+  UK_assertAdmin_(user);
+
+  const order_id = String(body.order_id || "").trim();
+  if (!order_id) throw new Error("order_id is required");
+
+  const meta = UK_assertOrderExists_(order_id);
+  UK_assertStatusTransition_(String(meta.status || "").toLowerCase(), "processing", "admin");
+  UK_statusSetOrderStatus_(order_id, "processing");
+
+  return { success: true, order_id: order_id, status: "processing" };
 }
 
-function _numOrBlank_(v) {
-  if (v === "" || v === null || v === undefined) return "";
-  const n = Number(String(v).trim());
-  if (!isFinite(n)) return "";
-  return n;
+function UK_handleOrderCancel(body) {
+  body = body || {};
+  const user = ukRequireActiveUserOrThrow_(body);
+  UK_assertAdmin_(user);
+
+  const order_id = String(body.order_id || "").trim();
+  if (!order_id) throw new Error("order_id is required");
+
+  const meta = UK_assertOrderExists_(order_id);
+  UK_assertNotDelivered_(meta.status);
+  UK_statusSetOrderStatus_(order_id, "cancelled");
+
+  return { success: true, order_id: order_id, status: "cancelled" };
+}
+
+function UK_handleUpdateOrderStatus(body) {
+  body = body || {};
+  const user = ukRequireActiveUserOrThrow_(body);
+  UK_assertAdmin_(user);
+
+  const order_id = String(body.order_id || "").trim();
+  const to = String(body.status || "").trim().toLowerCase();
+  if (!order_id) throw new Error("order_id is required");
+  if (!to) throw new Error("status is required");
+
+  const meta = UK_assertOrderExists_(order_id);
+  UK_assertStatusTransition_(String(meta.status || "").toLowerCase(), to, "admin");
+  UK_statusSetOrderStatus_(order_id, to);
+
+  return { success: true, order_id: order_id, status: to };
+}
+
+function UK_statusSetOrderStatus_(order_id, newStatus) {
+  const sh = ukGetSheet_("uk_orders");
+  const m = UK_getMapStrict_(sh, ["order_id", "status", "updated_at"]);
+  const found = ukFindRowIndexById_(sh, m.order_id, order_id);
+  if (found.rowIndex < 0) throw new Error("Order not found: " + order_id);
+
+  sh.getRange(found.rowIndex, m.status + 1).setValue(String(newStatus || "").toLowerCase());
+  sh.getRange(found.rowIndex, m.updated_at + 1).setValue(new Date());
 }

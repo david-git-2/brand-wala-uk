@@ -29,9 +29,7 @@ Depends on Step 2:
 function UK_handleRecomputeShipment(body) {
   body = body || {};
 
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
   const shipment_id = String(body.shipment_id || "").trim();
@@ -111,15 +109,15 @@ function UK_recomputeShipment_(shipment_id) {
   const mI = UK_getMapStrict_(shItems, itemReq);
 
   // ---- Load shipment row ----
-  const shipment = _findRowById_(shShip, mS.shipment_id, shipment_id);
+  const shipment = ukFindRowById_(shShip, mS.shipment_id, shipment_id);
   if (!shipment) throw new Error(`Shipment not found: ${shipment_id}`);
 
   const shipCtx = {
     shipment_id: shipment_id,
-    gbp_avg_rate: _numOrZero_(shipment[mS.gbp_avg_rate]),
-    gbp_rate_product: _numOrZero_(shipment[mS.gbp_rate_product]),
-    gbp_rate_cargo: _numOrZero_(shipment[mS.gbp_rate_cargo]),
-    cargo_cost_per_kg: _numOrZero_(shipment[mS.cargo_cost_per_kg])
+    gbp_avg_rate: ukNum_(shipment[mS.gbp_avg_rate]),
+    gbp_rate_product: ukNum_(shipment[mS.gbp_rate_product]),
+    gbp_rate_cargo: ukNum_(shipment[mS.gbp_rate_cargo]),
+    cargo_cost_per_kg: ukNum_(shipment[mS.cargo_cost_per_kg])
   };
 
   // ---- Cache pricing modes ----
@@ -162,8 +160,8 @@ function UK_recomputeShipment_(shipment_id) {
 
     // Lookups from order_items
     const pricing_mode_id = String(itemRow[mI.pricing_mode_id] || "").trim();
-    const profit_rate = _numOrZero_(itemRow[mI.profit_rate]);
-    const buy_price_gbp = _numOrZero_(itemRow[mI.buy_price_gbp]);
+    const profit_rate = ukNum_(itemRow[mI.profit_rate]);
+    const buy_price_gbp = ukNum_(itemRow[mI.buy_price_gbp]);
 
     const final_unit_gbp = itemRow[mI.final_unit_gbp];
     const final_unit_bdt = itemRow[mI.final_unit_bdt];
@@ -182,10 +180,10 @@ function UK_recomputeShipment_(shipment_id) {
 
     // Build allocation ctx
     const allocCtx = {
-      shipped_qty: _numOrZero_(r[mA.shipped_qty]),
-      allocated_qty: _numOrZero_(r[mA.allocated_qty]),
-      unit_product_weight: _numOrZero_(r[mA.unit_product_weight]),
-      unit_package_weight: _numOrZero_(r[mA.unit_package_weight]),
+      shipped_qty: ukNum_(r[mA.shipped_qty]),
+      allocated_qty: ukNum_(r[mA.allocated_qty]),
+      unit_product_weight: ukNum_(r[mA.unit_product_weight]),
+      unit_package_weight: ukNum_(r[mA.unit_package_weight]),
 
       buy_price_gbp: buy_price_gbp,
       profit_rate: profit_rate,
@@ -240,15 +238,15 @@ function UK_recomputeShipment_(shipment_id) {
  * - BDT: 0dp
  */
 function UK_computeAllocationAmounts_(ctx) {
-  const shipped_qty = _numOrZero_(ctx.shipped_qty);
-  const allocated_qty = _numOrZero_(ctx.allocated_qty);
+  const shipped_qty = ukNum_(ctx.shipped_qty);
+  const allocated_qty = ukNum_(ctx.allocated_qty);
 
-  const unit_total_weight = _numOrZero_(ctx.unit_product_weight) + _numOrZero_(ctx.unit_package_weight);
+  const unit_total_weight = ukNum_(ctx.unit_product_weight) + ukNum_(ctx.unit_package_weight);
   const allocated_weight = unit_total_weight * allocated_qty;
   const shipped_weight = unit_total_weight * shipped_qty;
 
-  const buy_price_gbp = _numOrZero_(ctx.buy_price_gbp);
-  const profit_rate = _numOrZero_(ctx.profit_rate);
+  const buy_price_gbp = ukNum_(ctx.buy_price_gbp);
+  const profit_rate = ukNum_(ctx.profit_rate);
 
   const pm = ctx.pricing_mode || {};
   const ship = ctx.shipment || {};
@@ -257,15 +255,15 @@ function UK_computeAllocationAmounts_(ctx) {
   const product_cost_gbp = UK_roundGBP_(shipped_qty * buy_price_gbp);
 
   const product_cost_bdt = (String(pm.conversion_rule) === "SEPARATE_RATES")
-    ? UK_roundBDT_(product_cost_gbp * _numOrZero_(ship.gbp_rate_product))
-    : UK_roundBDT_(product_cost_gbp * _numOrZero_(ship.gbp_avg_rate));
+    ? UK_roundBDT_(product_cost_gbp * ukNum_(ship.gbp_rate_product))
+    : UK_roundBDT_(product_cost_gbp * ukNum_(ship.gbp_avg_rate));
 
   // --- Cargo cost ---
-  const cargo_cost_gbp = UK_roundGBP_(shipped_weight * _numOrZero_(ship.cargo_cost_per_kg));
+  const cargo_cost_gbp = UK_roundGBP_(shipped_weight * ukNum_(ship.cargo_cost_per_kg));
 
   const cargo_cost_bdt = (String(pm.conversion_rule) === "SEPARATE_RATES")
-    ? UK_roundBDT_(cargo_cost_gbp * _numOrZero_(ship.gbp_rate_cargo))
-    : UK_roundBDT_(cargo_cost_gbp * _numOrZero_(ship.gbp_avg_rate));
+    ? UK_roundBDT_(cargo_cost_gbp * ukNum_(ship.gbp_rate_cargo))
+    : UK_roundBDT_(cargo_cost_gbp * ukNum_(ship.gbp_avg_rate));
 
   // --- Revenue ---
   let revenue_bdt = 0;
@@ -285,10 +283,10 @@ function UK_computeAllocationAmounts_(ctx) {
 
     // Choose conversion rate for revenue_bdt
     const rs = String(pm.rate_source_revenue || "").toLowerCase();
-    let rate = _numOrZero_(ship.gbp_avg_rate);
-    if (rs === "product") rate = _numOrZero_(ship.gbp_rate_product) || rate;
-    if (rs === "cargo") rate = _numOrZero_(ship.gbp_rate_cargo) || rate;
-    if (rs === "avg" || rs === "") rate = _numOrZero_(ship.gbp_avg_rate) || rate;
+    let rate = ukNum_(ship.gbp_avg_rate);
+    if (rs === "product") rate = ukNum_(ship.gbp_rate_product) || rate;
+    if (rs === "cargo") rate = ukNum_(ship.gbp_rate_cargo) || rate;
+    if (rs === "avg" || rs === "") rate = ukNum_(ship.gbp_avg_rate) || rate;
 
     revenue_bdt = UK_roundBDT_(product_revenue_gbp * rate);
 
@@ -343,16 +341,6 @@ function UK_computeAllocationAmounts_(ctx) {
 
 /************** internal helpers **************/
 
-function _findRowById_(sheet, idColIdx0, idVal) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return null;
-  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][idColIdx0]) === String(idVal)) return data[i];
-  }
-  return null;
-}
-
 function _buildIdMap_(sheet, idColIdx0) {
   const lastRow = sheet.getLastRow();
   const out = {};
@@ -379,16 +367,6 @@ function _buildIdMapFiltered_(sheet, idColIdx0, allowedIdsObj) {
   }
   return out;
 }
-
-function _numOrZero_(v) {
-  if (v === "" || v === null || v === undefined) return 0;
-  const n = Number(String(v).trim());
-  if (!isFinite(n)) return 0;
-  return n;
-}
-
-
-
 
 /************** UK_Recompute.gs **************
 Step 9 — Recompute Order totals + item status
@@ -424,11 +402,7 @@ Depends on Step 2:
 function UK_handleRecomputeOrder(body) {
   body = body || {};
 
-  const user = (typeof ukRequireActiveUser_ === "function")
-    ? ukRequireActiveUser_(body)
-    : { email: String(body.email || "").trim(), role: String(body.role || "").trim() };
-
-  // Recompute is typically admin-only (recommended)
+  const user = ukRequireActiveUserOrThrow_(body);
   UK_assertAdmin_(user);
 
   const order_id = String(body.order_id || "").trim();
@@ -493,7 +467,7 @@ function UK_recomputeOrder_(order_id) {
   const mA = UK_getMapStrict_(shAlloc, allocReq);
 
   // ---- Load order row ----
-  const orderFind = _findRowIndexById_(shOrders, mO.order_id, order_id);
+  const orderFind = ukFindRowIndexById_(shOrders, mO.order_id, order_id);
   if (orderFind.rowIndex < 0) throw new Error(`Order not found: ${order_id}`);
 
   const orderStatus = String(orderFind.row[mO.status] || "").trim().toLowerCase();
@@ -519,7 +493,7 @@ function UK_recomputeOrder_(order_id) {
     const oid = String(r[mI.order_item_id] || "").trim();
     if (!oid) continue;
 
-    const orderedQty = _numOrZero_(r[mI.ordered_quantity]);
+    const orderedQty = ukNum_(r[mI.ordered_quantity]);
 
     itemIndexById[oid] = i;
     orderedQtyById[oid] = orderedQty;
@@ -572,15 +546,15 @@ function UK_recomputeOrder_(order_id) {
     const oid = String(r[mA.order_item_id] || "").trim();
     if (!agg[oid]) continue; // allocation might point to an item not in the order list (ignore)
 
-    agg[oid].allocated_qty_total += _numOrZero_(r[mA.allocated_qty]);
-    agg[oid].shipped_qty_total += _numOrZero_(r[mA.shipped_qty]);
+    agg[oid].allocated_qty_total += ukNum_(r[mA.allocated_qty]);
+    agg[oid].shipped_qty_total += ukNum_(r[mA.shipped_qty]);
 
     // money (BDT integer expected)
-    agg[oid].revenue_bdt += _numOrZero_(r[mA.revenue_bdt]);
-    agg[oid].product_cost_bdt += _numOrZero_(r[mA.product_cost_bdt]);
-    agg[oid].cargo_cost_bdt += _numOrZero_(r[mA.cargo_cost_bdt]);
-    agg[oid].total_cost_bdt += _numOrZero_(r[mA.total_cost_bdt]);
-    agg[oid].profit_bdt += _numOrZero_(r[mA.profit_bdt]);
+    agg[oid].revenue_bdt += ukNum_(r[mA.revenue_bdt]);
+    agg[oid].product_cost_bdt += ukNum_(r[mA.product_cost_bdt]);
+    agg[oid].cargo_cost_bdt += ukNum_(r[mA.cargo_cost_bdt]);
+    agg[oid].total_cost_bdt += ukNum_(r[mA.total_cost_bdt]);
+    agg[oid].profit_bdt += ukNum_(r[mA.profit_bdt]);
   }
 
   // ---- Enforce NO OVER-SHIP across ALL allocations for each item ----
@@ -687,7 +661,7 @@ function UK_recomputeOrderStatus_(order_id, currentStatusLower, total_remaining_
 
   if (newStatus === currentStatusLower) return;
 
-  const found = _findRowIndexById_(shOrders, m.order_id, order_id);
+  const found = ukFindRowIndexById_(shOrders, m.order_id, order_id);
   if (found.rowIndex < 0) throw new Error(`Order not found: ${order_id}`);
 
   shOrders.getRange(found.rowIndex, m.status + 1).setValue(newStatus);
@@ -710,24 +684,4 @@ function _writeOrderTotals_(shOrders, mO, rowIndex, totals) {
   shOrders.getRange(rowIndex, mO.total_profit_bdt + 1).setValue(totals.total_profit_bdt);
 
   shOrders.getRange(rowIndex, mO.updated_at + 1).setValue(new Date());
-}
-
-function _findRowIndexById_(sheet, idColIdx0, idVal) {
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { rowIndex: -1, row: null };
-
-  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][idColIdx0]) === String(idVal)) {
-      return { rowIndex: i + 2, row: data[i] };
-    }
-  }
-  return { rowIndex: -1, row: null };
-}
-
-function _numOrZero_(v) {
-  if (v === "" || v === null || v === undefined) return 0;
-  const n = Number(String(v).trim());
-  if (!isFinite(n)) return 0;
-  return n;
 }
