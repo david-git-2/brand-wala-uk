@@ -1,8 +1,22 @@
+// ============================
+// src/pages/Cart.jsx
+// SHADCN + THEME COLORS + INLINE SKELETON
+// ============================
+
 import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { minCaseSize, useCart } from "../cart/CartProvider";
 import PlaceOrderDialog from "../components/PlaceOrderDialog";
-import CartSkeleton from "../components/CartSkeleton";
+
+// shadcn/ui
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// icons
+import { Loader2, Minus, Plus, Trash2 } from "lucide-react";
 
 function toDirectGoogleImageUrl(url) {
   if (!url) return "";
@@ -13,15 +27,49 @@ function toDirectGoogleImageUrl(url) {
   return `https://lh3.googleusercontent.com/d/${fileId}`;
 }
 
-function Spinner({ className = "" }) {
+// ----------------------------
+// Inline skeleton (no separate file)
+// ----------------------------
+function CartSkeleton({ rows = 3 }) {
   return (
-    <span
-      className={[
-        "inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent",
-        className,
-      ].join(" ")}
-      aria-hidden="true"
-    />
+    <div className="space-y-3">
+      {Array.from({ length: rows }).map((_, i) => (
+        <Card key={i} className="rounded-2xl border border-border bg-card">
+          <CardContent className="p-3">
+            <div className="flex gap-3">
+              <Skeleton className="h-20 w-20 rounded-xl" />
+
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-3 w-20" />
+                <div className="mt-2 space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+
+                <div className="mt-3 flex items-center justify-between">
+                  <Skeleton className="h-3 w-28" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-9 w-9 rounded-xl" />
+                    <Skeleton className="h-9 w-24 rounded-xl" />
+                    <Skeleton className="h-9 w-9 rounded-xl" />
+                    <Skeleton className="h-8 w-16 rounded-full" />
+                  </div>
+                  <Skeleton className="h-9 w-24 rounded-xl" />
+                </div>
+
+                <div className="mt-2">
+                  <Skeleton className="h-3 w-36" />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
   );
 }
 
@@ -35,8 +83,8 @@ export default function Cart() {
     clear,
     loading,
     getItemLoadingOp,
-    updateQty,     // ✅ must exist in provider now
-    createOrder,   // ✅ must exist in provider now
+    updateQty, // must exist in provider
+    createOrder, // must exist in provider
   } = useCart();
 
   const [draftQtyByKey, setDraftQtyByKey] = useState({});
@@ -68,8 +116,6 @@ export default function Cart() {
     try {
       const step = minCaseSize(it.product);
       const safeQty = Math.max(step, Number(getDraftQty(it) || 0) || 0);
-
-      // ✅ provider will call UK_API.cartUpdateItem(email, product_id, qty)
       await updateQty(it.key, safeQty);
 
       setDraftQtyByKey((prev) => {
@@ -108,14 +154,14 @@ export default function Cart() {
     try {
       setCreatingOrder(true);
 
-      // ✅ server reads cart; status will be submitted automatically
       const res = await createOrder(orderName);
 
       setPlaceOpen(false);
 
-      // Optional: clear cart UI (server might also clear)
+      // optional: clear (server may also clear)
       await clear();
 
+      // eslint-disable-next-line no-alert
       alert(`Order created: ${res?.order_id || "success"}`);
     } catch (e) {
       setOrderError(e?.message ? e.message : "Failed to create order.");
@@ -126,44 +172,43 @@ export default function Cart() {
 
   return (
     <div className="mx-auto w-full max-w-4xl p-4 md:p-6">
+      {/* Header */}
       <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Cart</h1>
-          <p className="text-sm text-slate-500">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-foreground">Cart</h1>
+          <p className="text-sm text-muted-foreground">
             {items.length} item{items.length === 1 ? "" : "s"}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {items.length > 0 && (
-            <button
-              onClick={clear}
-              disabled={loading || creatingOrder}
-              className={[
-                "inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50",
-                loading || creatingOrder ? "cursor-not-allowed opacity-60 hover:bg-white" : "",
-              ].join(" ")}
-            >
-              {loading ? (
-                <>
-                  <Spinner className="h-3 w-3" />
-                  Clearing…
-                </>
-              ) : (
-                "Clear cart"
-              )}
-            </button>
-          )}
-        </div>
+        {items.length > 0 && (
+          <Button
+            variant="outline"
+            className="rounded-xl"
+            onClick={clear}
+            disabled={loading || creatingOrder}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Clearing…
+              </>
+            ) : (
+              "Clear cart"
+            )}
+          </Button>
+        )}
       </div>
 
-      {/* ✅ Skeleton while loading */}
+      {/* Body */}
       {loading && items.length === 0 ? (
         <CartSkeleton rows={3} />
       ) : items.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-600">
-          Your cart is empty.
-        </div>
+        <Card className="rounded-2xl border border-border bg-muted">
+          <CardContent className="p-8 text-center text-muted-foreground">
+            Your cart is empty.
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-3">
           {items.map((it) => {
@@ -178,199 +223,222 @@ export default function Cart() {
             const dirty = isDirty(it);
 
             return (
-              <div
+              <Card
                 key={it.key}
                 className={[
-                  "flex gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm",
+                  "rounded-2xl border border-border bg-card shadow-sm",
                   busy ? "opacity-70" : "",
                 ].join(" ")}
               >
-                <div className="h-20 w-20 flex-shrink-0 rounded-xl bg-slate-50">
-                  {src ? (
-                    <img
-                      src={src}
-                      alt={p.name}
-                      className="h-20 w-20 rounded-xl object-contain"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        e.currentTarget.src = p.imageUrl;
-                      }}
-                    />
-                  ) : null}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                    {p.brand}
-                  </div>
-                  <div className="truncate text-base font-semibold text-slate-900">
-                    {p.name}
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <div className="text-xs text-slate-500">
-                      Step: <span className="font-medium">{step}</span>
+                <CardContent className="p-3">
+                  <div className="flex gap-3">
+                    {/* Image */}
+                    <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-muted">
+                      {src ? (
+                        <img
+                          src={src}
+                          alt={p.name}
+                          className="h-20 w-20 object-contain"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            e.currentTarget.src = p.imageUrl;
+                          }}
+                        />
+                      ) : null}
                     </div>
 
-                    {canSeePrice ? (
-                      <div className="text-sm font-semibold text-slate-900">
-                        £{Number(p.price ?? 0).toFixed(2)}
-                      </div>
-                    ) : (
-                      <div className="text-xs font-medium text-slate-400">
-                        Login to see price
-                      </div>
-                    )}
-                  </div>
+                    {/* Content */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            {p.brand}
+                          </div>
+                          <div className="truncate text-base font-semibold text-foreground">
+                            {p.name}
+                          </div>
+                        </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => bumpQty(it, -1)}
-                        disabled={busy || loading || creatingOrder}
-                        className={[
-                          "h-9 w-9 rounded-xl border border-slate-200 bg-white text-slate-900 hover:bg-slate-50",
-                          busy || loading || creatingOrder
-                            ? "cursor-not-allowed opacity-50 hover:bg-white"
-                            : "",
-                        ].join(" ")}
-                        title={`- ${step}`}
-                      >
-                        −
-                      </button>
+                        {canSeePrice ? (
+                          <div className="shrink-0 text-sm font-semibold text-foreground">
+                            £{Number(p.price ?? 0).toFixed(2)}
+                          </div>
+                        ) : (
+                          <div className="shrink-0 text-xs font-medium text-muted-foreground">
+                            Login to see price
+                          </div>
+                        )}
+                      </div>
 
-                      <div className="min-w-[110px] text-center">
-                        <div className="text-sm font-semibold text-slate-900">{draftQty}</div>
-                        <div className="text-[11px] text-slate-500">
-                          {savingKey === it.key ? (
-                            <span className="inline-flex items-center justify-center gap-2">
-                              <Spinner className="h-3 w-3" />
-                              Saving…
-                            </span>
-                          ) : dirty ? (
-                            "unsaved"
-                          ) : (
-                            "quantity"
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <div className="text-xs text-muted-foreground">
+                          Step:{" "}
+                          <span className="font-medium text-foreground">
+                            {step}
+                          </span>
+                        </div>
+
+                        <Badge variant="secondary" className="rounded-full">
+                          Case {step}
+                        </Badge>
+                      </div>
+
+                      <Separator className="my-3" />
+
+                      {/* Controls */}
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 rounded-xl"
+                            onClick={() => bumpQty(it, -1)}
+                            disabled={busy || loading || creatingOrder}
+                            title={`- ${step}`}
+                            aria-label={`Decrease by ${step}`}
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+
+                          <div className="min-w-[110px] text-center">
+                            <div className="text-sm font-semibold text-foreground">
+                              {draftQty}
+                            </div>
+
+                            <div className="text-[11px] text-muted-foreground">
+                              {savingKey === it.key ? (
+                                <span className="inline-flex items-center justify-center gap-2">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  Saving…
+                                </span>
+                              ) : dirty ? (
+                                "unsaved"
+                              ) : (
+                                "quantity"
+                              )}
+                            </div>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 rounded-xl"
+                            onClick={() => bumpQty(it, +1)}
+                            disabled={busy || loading || creatingOrder}
+                            title={`+ ${step}`}
+                            aria-label={`Increase by ${step}`}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+
+                          {dirty && (
+                            <Button
+                              onClick={() => onSaveQty(it)}
+                              disabled={busy || loading || creatingOrder}
+                              className="ml-2 rounded-xl"
+                            >
+                              {savingKey === it.key ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Save
+                                </>
+                              ) : (
+                                "Save"
+                              )}
+                            </Button>
                           )}
                         </div>
-                      </div>
 
-                      <button
-                        onClick={() => bumpQty(it, +1)}
-                        disabled={busy || loading || creatingOrder}
-                        className={[
-                          "h-9 w-9 rounded-xl border border-slate-200 bg-white text-slate-900 hover:bg-slate-50",
-                          busy || loading || creatingOrder
-                            ? "cursor-not-allowed opacity-50 hover:bg-white"
-                            : "",
-                        ].join(" ")}
-                        title={`+ ${step}`}
-                      >
-                        +
-                      </button>
-
-                      {dirty && (
-                        <button
-                          onClick={() => onSaveQty(it)}
+                        <Button
+                          variant="destructive"
+                          className="rounded-xl"
+                          onClick={() => remove(it.key)}
                           disabled={busy || loading || creatingOrder}
-                          className={[
-                            "ml-2 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700",
-                            busy || loading || creatingOrder
-                              ? "cursor-not-allowed opacity-60 hover:bg-emerald-600"
-                              : "",
-                          ].join(" ")}
                         >
-                          {savingKey === it.key ? (
+                          {op === "remove" ? (
                             <>
-                              <Spinner className="h-3 w-3" />
-                              Save
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Removing…
                             </>
                           ) : (
-                            "Save"
+                            <>
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Remove
+                            </>
                           )}
-                        </button>
+                        </Button>
+                      </div>
+
+                      {canSeePrice && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Line total:{" "}
+                          <span className="font-medium text-foreground">
+                            £{(Number(p.price ?? 0) * draftQty).toFixed(2)}
+                          </span>
+                        </div>
                       )}
                     </div>
-
-                    <button
-                      onClick={() => remove(it.key)}
-                      disabled={busy || loading || creatingOrder}
-                      className={[
-                        "inline-flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100",
-                        busy || loading || creatingOrder
-                          ? "cursor-not-allowed opacity-60 hover:bg-rose-50"
-                          : "",
-                      ].join(" ")}
-                    >
-                      {op === "remove" ? (
-                        <>
-                          <Spinner className="h-3 w-3" />
-                          Removing…
-                        </>
-                      ) : (
-                        "Remove"
-                      )}
-                    </button>
                   </div>
-
-                  {canSeePrice && (
-                    <div className="mt-2 text-xs text-slate-500">
-                      Line total:{" "}
-                      <span className="font-medium text-slate-900">
-                        £{(Number(p.price ?? 0) * draftQty).toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
       )}
 
       {/* Totals */}
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex items-center justify-between text-sm text-slate-600">
-          <span>Total quantity</span>
-          <span className="font-semibold text-slate-900">{totals.totalQty}</span>
-        </div>
-
-        {canSeePrice && (
-          <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
-            <span>Estimated total</span>
-            <span className="text-base font-bold text-slate-900">
-              £{totals.totalPrice.toFixed(2)}
+      <Card className="mt-6 rounded-2xl border border-border bg-card">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>Total quantity</span>
+            <span className="font-semibold text-foreground">
+              {totals.totalQty}
             </span>
           </div>
-        )}
 
-        <button
-          className="mt-4 w-full rounded-2xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-          disabled={items.length === 0 || loading || creatingOrder || anyDirty}
-          onClick={() => setPlaceOpen(true)}
-          title={anyDirty ? "Save quantity changes before placing order" : "Place order"}
-        >
-          {creatingOrder ? (
-            <span className="inline-flex items-center justify-center gap-2">
-              <Spinner className="h-4 w-4" />
-              Creating order…
-            </span>
-          ) : (
-            "Place order"
+          {canSeePrice && (
+            <div className="mt-2 flex items-center justify-between text-sm text-muted-foreground">
+              <span>Estimated total</span>
+              <span className="text-base font-bold text-foreground">
+                £{totals.totalPrice.toFixed(2)}
+              </span>
+            </div>
           )}
-        </button>
 
-        {anyDirty && (
-          <p className="mt-2 text-center text-xs text-amber-600">
-            Please save your quantity changes before placing the order.
+          <Button
+            className="mt-4 w-full rounded-2xl"
+            disabled={
+              items.length === 0 || loading || creatingOrder || anyDirty
+            }
+            onClick={() => setPlaceOpen(true)}
+            title={
+              anyDirty
+                ? "Save quantity changes before placing order"
+                : "Place order"
+            }
+          >
+            {creatingOrder ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating order…
+              </>
+            ) : (
+              "Place order"
+            )}
+          </Button>
+
+          {anyDirty && (
+            <p className="mt-2 text-center text-xs text-amber-600">
+              Please save your quantity changes before placing the order.
+            </p>
+          )}
+
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Quantity changes by case size (min 6).
           </p>
-        )}
-
-        <p className="mt-2 text-center text-xs text-slate-400">
-          Quantity changes by case size (min 6).
-        </p>
-      </div>
+        </CardContent>
+      </Card>
 
       <PlaceOrderDialog
         open={placeOpen}
@@ -383,8 +451,7 @@ export default function Cart() {
         onCreate={onCreateOrder}
         loading={creatingOrder}
         error={orderError}
-          userEmail={user?.email}
-
+        userEmail={user?.email}
       />
     </div>
   );

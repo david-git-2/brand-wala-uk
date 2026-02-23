@@ -1,47 +1,34 @@
+// ============================
+// src/components/PlaceOrderDialog.jsx
+// SHADCN + THEME COLORS + UNIQUE PREFILL (DATE + TIME)
+// ============================
+
 import { useEffect, useMemo, useState } from "react";
 
-function Spinner({ className = "" }) {
-  return (
-    <span
-      className={[
-        "inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent",
-        className,
-      ].join(" ")}
-      aria-hidden="true"
-    />
-  );
-}
+// shadcn/ui
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-function Modal({ open, onClose, title, children, footer }) {
-  if (!open) return null;
+// icons
+import { Loader2 } from "lucide-react";
 
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <div className="text-base font-semibold text-slate-900">{title}</div>
-          </div>
-
-          <div className="px-5 py-4">{children}</div>
-
-          <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
-            {footer}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function todayYMD() {
-  // YYYY-MM-DD in local timezone
+function nowStampLocal() {
+  // Local timestamp: YYYY-MM-DD HH:mm (24h)
   const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day} ${hh}:${mm}`;
 }
 
 export default function PlaceOrderDialog({
@@ -50,13 +37,13 @@ export default function PlaceOrderDialog({
   onCreate,
   loading = false,
   error = "",
-  userEmail = "", // ✅ new prop
+  userEmail = "",
 }) {
   const defaultName = useMemo(() => {
     const email = String(userEmail || "").trim();
-    const date = todayYMD();
-    return email ? `${email} - ${date}` : `Order - ${date}`;
-  }, [userEmail]);
+    const stamp = nowStampLocal();
+    return email ? `${email} - ${stamp}` : `Order - ${stamp}`;
+  }, [userEmail, open]); // include open so it re-stamps when opening
 
   const [name, setName] = useState(defaultName);
 
@@ -65,61 +52,73 @@ export default function PlaceOrderDialog({
   }, [open, defaultName]);
 
   return (
-    <Modal
+    <Dialog
       open={open}
-      onClose={() => {
-        if (!loading) onClose?.();
+      onOpenChange={(v) => {
+        if (!v && !loading) onClose?.();
       }}
-      title="Place order"
-      footer={
-        <>
-          <button
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+    >
+      <DialogContent className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-background p-6 shadow-lg">
+        {" "}
+        <DialogHeader>
+          <DialogTitle className="text-foreground">Place order</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-muted-foreground">
+              Order name
+            </label>
+
+            {/* auto-filled + disabled; uses theme colors */}
+            <Input
+              value={name}
+              readOnly
+              disabled
+              autoComplete="off"
+              spellCheck={false}
+              className="rounded-xl"
+            />
+          </div>
+
+          {error ? (
+            <Alert variant="destructive" className="rounded-xl">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <p className="text-xs text-muted-foreground">
+            This will create an order from your current cart. Status will be{" "}
+            <span className="font-semibold text-foreground">submitted</span>.
+          </p>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-xl"
             onClick={onClose}
             disabled={loading}
           >
             Cancel
-          </button>
+          </Button>
 
-          <button
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          <Button
+            type="button"
+            className="rounded-xl"
             onClick={() => onCreate?.(name)}
             disabled={loading}
           >
             {loading ? (
               <>
-                <Spinner className="h-4 w-4" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Create order
               </>
             ) : (
               "Create order"
             )}
-          </button>
-        </>
-      }
-    >
-      <label className="block text-sm font-medium text-slate-700">Order name</label>
-
-      {/* ✅ auto-filled + disabled + no autofill */}
-      <input
-        value={name}
-        readOnly
-        disabled
-        autoComplete="off"
-        spellCheck={false}
-        className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none"
-      />
-
-      {error ? (
-        <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="mt-3 text-xs text-slate-500">
-        This will create an order from your current cart. Status will be{" "}
-        <span className="font-semibold text-slate-700">submitted</span>.
-      </div>
-    </Modal>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
