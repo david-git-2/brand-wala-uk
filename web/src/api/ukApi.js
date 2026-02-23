@@ -66,7 +66,12 @@ export const UK_API = {
   // orders (KEEP OLD + ADD NEW)
   // ============================
   // NEW schema create (already in your router)
-  createOrder: (email, order_name) => post("uk_create_order", { email, order_name }),
+  createOrder: (email, order_name, items = undefined) =>
+    post("uk_create_order", {
+      email,
+      order_name,
+      ...(Array.isArray(items) ? { items } : {}),
+    }),
 
   // NEW read endpoints
   getOrders: (email, only_mine) =>

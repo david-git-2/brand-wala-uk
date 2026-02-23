@@ -29,6 +29,44 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /carts/{cartEmail} {
+      allow get, list, create, update, delete: if signedIn();
+
+      match /items/{itemId} {
+        allow get, list, create, update, delete: if signedIn();
+      }
+    }
+
+    match /orders/{orderId} {
+      allow get, list, create: if signedIn();
+      allow update: if isAdmin() || (
+        hasEmail() &&
+        resource.data.creator_email == myEmailLower()
+      );
+      allow delete: if isAdmin();
+
+      match /items/{itemId} {
+        allow get, list, create: if signedIn();
+        allow update: if isAdmin() || (
+          hasEmail() &&
+          get(/databases/$(database)/documents/orders/$(orderId)).data.creator_email == myEmailLower()
+        );
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /shipments/{shipmentId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /shipment_allocations/{allocationId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /shipment_product_snapshots/{snapshotId} {
+      allow read, write: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,324 +1,389 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-
-import { UK_API } from "../../api/ukApi";
-import { useAuth } from "../../auth/AuthProvider";
-
+import { Loader2, Pencil, Save } from "lucide-react";
+import { useAuth } from "@/auth/AuthProvider";
+import {
+  getOrderItemsForViewer,
+  saveCustomerOfferItem,
+  submitCustomerPricingDecision,
+} from "@/firebase/orders";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function ItemsSkeleton() {
+function imgUrl(url) {
+  if (!url) return "";
+  const m1 = url.match(/[?&]id=([^&]+)/);
+  const m2 = url.match(/\/file\/d\/([^/]+)/);
+  const fileId = m1?.[1] || m2?.[1];
+  return fileId ? `https://lh3.googleusercontent.com/d/${fileId}` : url;
+}
+
+function RowsSkeleton() {
   return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="rounded-lg border p-3">
-            <Skeleton className="h-4 w-64" />
-            <Skeleton className="mt-2 h-3 w-40" />
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
-              <Skeleton className="h-10" />
-              <Skeleton className="h-10" />
-              <Skeleton className="h-10" />
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="rounded-lg border p-3">
+          <Skeleton className="h-14 w-full" />
+        </div>
+      ))}
+    </div>
   );
 }
 
-function isGBPMode(id) {
-  return String(id || "").toUpperCase().includes("GBP");
+function gbp(v) {
+  return `£${(Number(v) || 0).toFixed(2)}`;
 }
 
-function n0(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.round(n) : 0;
+function bdt(v) {
+  return `${Math.round(Number(v) || 0)} BDT`;
 }
 
 export default function CustomerOrderDetails() {
   const { orderId } = useParams();
   const { user } = useAuth();
-  const navigate = useNavigate();
-
-  const [order, setOrder] = useState(null);
-  const [items, setItems] = useState([]);
-
-  const [draft, setDraft] = useState({});
-  const [saving, setSaving] = useState({});
-  const [rowErr, setRowErr] = useState({});
-
+  const nav = useNavigate();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
-  const [topMsg, setTopMsg] = useState("");
-  const [sendingCounter, setSendingCounter] = useState(false);
-  const [accepting, setAccepting] = useState(false);
-
-  async function loadAll() {
-    if (!user?.email || !orderId) return;
-
-    const [ordersRes, itemsRes] = await Promise.all([
-      UK_API.getOrders(user.email),
-      UK_API.getOrderItems(user.email, orderId),
-    ]);
-
-    const allOrders = Array.isArray(ordersRes.orders) ? ordersRes.orders : [];
-    const currentOrder = allOrders.find((o) => String(o.order_id) === String(orderId)) || null;
-    const nextItems = Array.isArray(itemsRes.items) ? itemsRes.items : [];
-
-    setOrder(currentOrder);
-    setItems(nextItems);
-
-    setDraft((prev) => {
-      const next = { ...prev };
-      for (const it of nextItems) {
-        const id = String(it.order_item_id || "").trim();
-        if (!id) continue;
-        if (next[id] == null) {
-          const v = isGBPMode(it.pricing_mode_id) ? it.customer_unit_gbp : it.customer_unit_bdt;
-          next[id] = v == null || v === "" ? "" : String(v);
-        }
-      }
-      return next;
-    });
-  }
+  const [order, setOrder] = useState(null);
+  const [items, setItems] = useState([]);
+  const [draft, setDraft] = useState({});
+  const [savingDecision, setSavingDecision] = useState(false);
+  const [rowSaving, setRowSaving] = useState({});
+  const [rowEditMode, setRowEditMode] = useState({});
+  const [actionMsg, setActionMsg] = useState("");
 
   useEffect(() => {
     let alive = true;
-
-    async function run() {
+    (async () => {
       if (!user?.email || !orderId) return;
       setLoading(true);
       setErr("");
-      setTopMsg("");
       try {
-        await loadAll();
-      } catch (e) {
+        const data = await getOrderItemsForViewer({
+          email: user.email,
+          role: user.role,
+          order_id: orderId,
+        });
         if (!alive) return;
-        setErr(e?.message || "Failed to load order details");
+        if (!data.order) {
+          setErr("Order not found");
+          setOrder(null);
+          setItems([]);
+          return;
+        }
+        setOrder(data.order);
+        setItems(data.items || []);
+      } catch (e) {
+        if (alive) setErr(e?.message || "Failed to load order");
       } finally {
         if (alive) setLoading(false);
       }
-    }
-
-    run();
+    })();
     return () => {
       alive = false;
     };
-  }, [user?.email, orderId]);
+  }, [user?.email, user?.role, orderId]);
+
+  useEffect(() => {
+    const next = {};
+    const showGbp = !!user?.can_see_price_gbp;
+    (items || []).forEach((it) => {
+      const cs = it?.calculated_selling_price || {};
+      const saved = showGbp ? Number(it?.customer_unit_gbp) : Number(it?.customer_unit_bdt);
+      const offered = showGbp ? Number(cs?.offered_product_unit_gbp || 0) : Number(cs?.offered_product_unit_bdt || 0);
+      const v = Number.isFinite(saved) && saved > 0 ? saved : offered;
+      next[String(it.order_item_id || "")] = v > 0 ? String(v) : "";
+      next[`qty__${String(it.order_item_id || "")}`] = String(
+        Math.max(0, Math.round(Number(it?.customer_changed_quantity ?? it?.ordered_quantity ?? 0))),
+      );
+    });
+    setDraft(next);
+  }, [items, user?.can_see_price_gbp]);
 
   const status = String(order?.status || "").toLowerCase();
-  const counterEnabled = order?.counter_enabled !== false;
-  const canCounter = (status === "priced" || status === "under_review") && counterEnabled;
-  const canAccept = status === "priced";
+  const canShowPriceStatuses = new Set([
+    "priced",
+    "under_review",
+    "finalized",
+    "processing",
+    "partially_delivered",
+    "delivered",
+  ]);
+  const canShowPrice = canShowPriceStatuses.has(status);
+  const editLocked = status !== "priced";
+  const showGbp = !!user?.can_see_price_gbp;
+  const offeredOrderTotal = (items || []).reduce((acc, it) => {
+    const cs = it?.calculated_selling_price || {};
+    const id = String(it?.order_item_id || "");
+    const qty = Math.max(
+      0,
+      Math.round(Number(draft[`qty__${id}`] ?? it?.customer_changed_quantity ?? it?.ordered_quantity ?? 0)),
+    );
+    const unit = showGbp ? Number(cs?.offered_product_unit_gbp || 0) : Number(cs?.offered_product_unit_bdt || 0);
+    return acc + (Number.isFinite(unit) ? unit * qty : 0);
+  }, 0);
+  const customerOrderTotal = (items || []).reduce((acc, it) => {
+    const id = String(it?.order_item_id || "");
+    const saved = showGbp ? Number(it?.customer_unit_gbp) : Number(it?.customer_unit_bdt);
+    const fromDraft = Number(draft[id] || 0);
+    const unit = Number.isFinite(saved) && saved > 0 ? saved : fromDraft;
+    const qty = Math.max(
+      0,
+      Math.round(Number(draft[`qty__${id}`] ?? it?.customer_changed_quantity ?? it?.ordered_quantity ?? 0)),
+    );
+    return acc + (Number.isFinite(unit) ? unit * qty : 0);
+  }, 0);
+  const allItemsSaved = items.length > 0 && items.every((it) => {
+    const saved = showGbp ? Number(it?.customer_unit_gbp) : Number(it?.customer_unit_bdt);
+    return Number.isFinite(saved) && saved > 0;
+  });
 
-  async function saveCounterUnit(item) {
-    const itemId = String(item.order_item_id || "").trim();
-    if (!itemId || !canCounter) return;
-
-    const raw = String(draft[itemId] ?? "").trim();
-    const parsed = raw === "" ? "" : Number(raw);
-    if (raw !== "" && !Number.isFinite(parsed)) {
-      setRowErr((p) => ({ ...p, [itemId]: "Invalid number" }));
-      return;
-    }
-
-    const patch = { order_item_id: itemId };
-    if (isGBPMode(item.pricing_mode_id)) patch.customer_unit_gbp = parsed;
-    else patch.customer_unit_bdt = parsed;
-
-    setSaving((p) => ({ ...p, [itemId]: true }));
-    setRowErr((p) => ({ ...p, [itemId]: "" }));
+  async function submitDecision() {
+    if (!orderId || !user?.email || !items.length) return;
+    setSavingDecision(true);
+    setActionMsg("");
     try {
-      await UK_API.updateOrderItems(user.email, orderId, [patch]);
-      await loadAll();
+      if (!allItemsSaved) throw new Error("Save each item price first.");
+      const offers = items.map((it) => {
+        const id = String(it.order_item_id || "");
+        const unit = showGbp ? Number(it?.customer_unit_gbp || 0) : Number(it?.customer_unit_bdt || 0);
+        return { order_item_id: id, unit_price: unit };
+      });
+      const res = await submitCustomerPricingDecision({
+        email: user.email,
+        order_id: orderId,
+        decision: "negotiate",
+        currency: showGbp ? "gbp" : "bdt",
+        offers,
+      });
+      const nextStatus = String(res?.status || "").toLowerCase();
+      setOrder((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+      setActionMsg("Customer review submitted. Order moved to under_review.");
     } catch (e) {
-      setRowErr((p) => ({ ...p, [itemId]: e?.message || "Failed to save" }));
+      setActionMsg(e?.message || "Failed to submit decision");
     } finally {
-      setSaving((p) => {
+      setSavingDecision(false);
+    }
+  }
+
+  async function saveItemDecision(it) {
+    const id = String(it?.order_item_id || "");
+    if (!id || !orderId || !user?.email) return;
+    setRowSaving((p) => ({ ...p, [id]: true }));
+    setActionMsg("");
+    try {
+      const cs = it?.calculated_selling_price || {};
+      const unit = Number(draft[id] || 0);
+      const changedQty = Math.max(
+        0,
+        Math.round(Number(draft[`qty__${id}`] ?? it?.customer_changed_quantity ?? it?.ordered_quantity ?? 0)),
+      );
+      if (editLocked) throw new Error("Editing is locked for this status.");
+      if (!(unit > 0)) throw new Error("Enter valid price");
+      if (!(changedQty > 0)) throw new Error("Enter valid quantity");
+      await saveCustomerOfferItem({
+        email: user.email,
+        order_id: orderId,
+        order_item_id: id,
+        currency: showGbp ? "gbp" : "bdt",
+        unit_price: unit,
+        customer_changed_quantity: changedQty,
+        decision: "negotiate",
+      });
+      const refreshed = await getOrderItemsForViewer({
+        email: user.email,
+        role: user.role,
+        order_id: orderId,
+      });
+      if (refreshed?.order) setOrder(refreshed.order);
+      if (Array.isArray(refreshed?.items)) setItems(refreshed.items);
+      setRowEditMode((p) => ({ ...p, [id]: false }));
+      setActionMsg(`Saved ${it?.name || "item"} offer.`);
+    } catch (e) {
+      setActionMsg(e?.message || "Failed to save item offer");
+    } finally {
+      setRowSaving((p) => {
         const next = { ...p };
-        delete next[itemId];
+        delete next[id];
         return next;
       });
     }
   }
 
-  async function sendCounter() {
-    if (!canCounter) return;
-
-    const payload = [];
-    for (const it of items) {
-      const itemId = String(it.order_item_id || "").trim();
-      if (!itemId) continue;
-
-      const raw = String(draft[itemId] ?? "").trim();
-      if (!raw) continue;
-      const n = Number(raw);
-      if (!Number.isFinite(n)) continue;
-
-      const row = { order_item_id: itemId };
-      if (isGBPMode(it.pricing_mode_id)) row.customer_unit_gbp = n;
-      else row.customer_unit_bdt = n;
-      payload.push(row);
-    }
-
-    if (!payload.length) {
-      setTopMsg("Enter at least one counter price before sending.");
-      return;
-    }
-
-    setSendingCounter(true);
-    setTopMsg("");
-    try {
-      await UK_API.orderCustomerCounter(user.email, orderId, payload);
-      await loadAll();
-      setTopMsg("Counter sent to admin.");
-    } catch (e) {
-      setTopMsg(e?.message || "Failed to send counter");
-    } finally {
-      setSendingCounter(false);
-    }
-  }
-
-  async function acceptOffer() {
-    if (!canAccept) return;
-    setAccepting(true);
-    setTopMsg("");
-    try {
-      await UK_API.orderAcceptOffer(user.email, orderId);
-      await loadAll();
-      setTopMsg("Offer accepted. Order finalized.");
-    } catch (e) {
-      setTopMsg(e?.message || "Failed to accept offer");
-    } finally {
-      setAccepting(false);
-    }
-  }
-
   return (
-    <div className="mx-auto w-full max-w-6xl p-4 md:p-6">
+    <div className="mx-auto w-full max-w-5xl p-4 md:p-6">
       <div className="mb-4 flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Order Details</h1>
-          <div className="text-sm text-muted-foreground">{orderId}</div>
-          {status ? <Badge className="mt-2" variant="secondary">{status}</Badge> : null}
+          <h1 className="text-2xl font-semibold tracking-tight">Order Items</h1>
+          <div className="text-sm text-muted-foreground">{order?.order_name || orderId}</div>
+          {order?.status ? <Badge className="mt-2" variant="secondary">{String(order.status || "").toLowerCase()}</Badge> : null}
         </div>
-        <Button variant="outline" onClick={() => navigate("/customer/orders")}>Back</Button>
+        <Button variant="outline" onClick={() => nav("/customer/orders")}>Back</Button>
       </div>
 
       {err ? (
-        <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div>
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div>
+      ) : null}
+      {actionMsg ? (
+        <div className="mb-4 rounded-lg border px-4 py-3 text-sm">{actionMsg}</div>
       ) : null}
 
-      {topMsg ? (
-        <div className="mb-3 rounded-lg border px-4 py-3 text-sm">{topMsg}</div>
-      ) : null}
-
-      {!loading && order ? (
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle className="text-base">Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Qty {n0(order.total_order_qty)} • Shipped {n0(order.total_shipped_qty)} • Remaining {n0(order.total_remaining_qty)} • Total Cost (BDT) {n0(order.total_total_cost_bdt)}
-            <div className="mt-1">Counter offer: <span className="font-medium text-foreground">{counterEnabled ? "Enabled" : "Disabled by admin"}</span></div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {loading ? (
-        <ItemsSkeleton />
-      ) : (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Items</CardTitle>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" disabled={!canAccept || accepting} onClick={acceptOffer}>
-                {accepting ? "Accepting..." : "Accept Offer"}
-              </Button>
-              <Button disabled={!canCounter || sendingCounter} onClick={sendCounter}>
-                {sendingCounter ? "Sending..." : "Send Counter"}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {!counterEnabled ? (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Counter offer is currently turned off by admin. You can still accept the offer when available.
-              </div>
-            ) : null}
-            {items.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No items.</div>
-            ) : (
-              items.map((it) => {
-                const itemId = String(it.order_item_id || "").trim();
-                const modeGBP = isGBPMode(it.pricing_mode_id);
-                const offered = modeGBP ? it.offered_unit_gbp : it.offered_unit_bdt;
-                const customer = modeGBP ? it.customer_unit_gbp : it.customer_unit_bdt;
-                const finalUnit = modeGBP ? it.final_unit_gbp : it.final_unit_bdt;
-                const showFinalPrice =
-                  status === "finalized" ||
-                  status === "processing" ||
-                  status === "partially_delivered" ||
-                  status === "delivered";
-                const shownUnit = showFinalPrice ? finalUnit : offered;
-                const shownLabel = showFinalPrice ? "Final unit (mode)" : "Offered unit (mode)";
-
-                return (
-                  <div key={itemId} className="rounded-lg border p-3">
-                    <div className="text-sm font-semibold">{it.name || "Unnamed item"}</div>
-                    <div className="text-xs text-muted-foreground">{itemId} • mode {it.pricing_mode_id || "-"} • qty {n0(it.ordered_quantity)}</div>
-
-                    <div className="mt-3 grid gap-2 md:grid-cols-5">
-                      <div className="rounded-lg border p-2 text-xs">
-                        <div className="text-muted-foreground">Offered GBP</div>
-                        <div className="font-semibold">{it.offered_unit_gbp ?? "-"}</div>
-                      </div>
-
-                      <div className="rounded-lg border p-2 text-xs">
-                        <div className="text-muted-foreground">Offered BDT</div>
-                        <div className="font-semibold">{it.offered_unit_bdt ?? "-"}</div>
-                      </div>
-
-                      <div className="rounded-lg border p-2 text-xs">
-                        <div className="text-muted-foreground">{shownLabel}</div>
-                        <div className="font-semibold">{shownUnit ?? "-"}</div>
-                      </div>
-
-                      <div className="rounded-lg border p-2 text-xs">
-                        <div className="text-muted-foreground">Customer unit</div>
-                        <Input
-                          value={draft[itemId] ?? (customer ?? "")}
-                          onChange={(e) => setDraft((p) => ({ ...p, [itemId]: e.target.value }))}
-                          onBlur={() => saveCounterUnit(it)}
-                          disabled={!canCounter || !!saving[itemId]}
-                          inputMode="decimal"
-                          className="mt-1 h-8"
-                        />
-                      </div>
-
-                      <div className="rounded-lg border p-2 text-xs">
-                        <div className="text-muted-foreground">Final unit</div>
-                        <div className="font-semibold">{finalUnit ?? "-"}</div>
-                      </div>
-
-                      <div className="rounded-lg border p-2 text-xs">
-                        <div className="text-muted-foreground">Delivery</div>
-                        <div className="font-semibold">shipped {n0(it.shipped_qty_total)} / remaining {n0(it.remaining_qty)}</div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Items</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <RowsSkeleton />
+          ) : items.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No items.</div>
+          ) : (
+            <>
+              {canShowPrice ? (
+                <>
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="text-xs text-muted-foreground">Save each item. Then change order status.</div>
+                    <div className="ml-auto">
+                      <Button size="sm" onClick={submitDecision} disabled={savingDecision || !allItemsSaved || editLocked}>
+                        {savingDecision ? "Updating..." : "Change Order Status"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mb-3 grid gap-2 md:grid-cols-2">
+                    <div className="rounded-lg border p-3 text-sm">
+                      <div className="text-xs text-muted-foreground">Offered Order Value</div>
+                      <div className="font-semibold">
+                        {showGbp ? gbp(offeredOrderTotal) : bdt(offeredOrderTotal)}
                       </div>
                     </div>
-
-                    {rowErr[itemId] ? <div className="mt-2 text-xs text-destructive">{rowErr[itemId]}</div> : null}
+                    <div className="rounded-lg border p-3 text-sm">
+                      <div className="text-xs text-muted-foreground">Customer Total</div>
+                      <div className="font-semibold">
+                        {showGbp ? gbp(customerOrderTotal) : bdt(customerOrderTotal)}
+                      </div>
+                    </div>
                   </div>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-      )}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-muted/40 text-muted-foreground">
+                        <tr className="text-left">
+                          <th className="px-3 py-2">Product</th>
+                          <th className="px-3 py-2">Ordered Qty</th>
+                          <th className="px-3 py-2">Changed Qty</th>
+                          {showGbp ? <th className="px-3 py-2">Unit Purchase</th> : null}
+                          {showGbp ? <th className="px-3 py-2">Cargo / Unit</th> : null}
+                          <th className="px-3 py-2">Offered / Unit</th>
+                          <th className="px-3 py-2">Counter Offer</th>
+                          <th className="px-3 py-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {items.map((it) => {
+                          const cs = it?.calculated_selling_price || {};
+                          const id = String(it.order_item_id || "");
+                          const offered = showGbp ? Number(cs?.offered_product_unit_gbp || 0) : Number(cs?.offered_product_unit_bdt || 0);
+                          const cargo = showGbp ? Number(cs?.cargo_unit_gbp || 0) : Number(cs?.cargo_unit_bdt || 0);
+                          const purchase = showGbp
+                            ? Number(it?.buy_price_gbp || 0)
+                            : Number(cs?.profit_rate_pct || 0) >= 0
+                              ? offered / (1 + Number(cs?.profit_rate_pct || 0) / 100)
+                              : 0;
+                          const hasSaved = showGbp
+                            ? Number(it?.customer_unit_gbp || 0) > 0
+                            : Number(it?.customer_unit_bdt || 0) > 0;
+                          const isEditable = rowEditMode[id] ?? !hasSaved;
+                          return (
+                            <tr key={id}>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                                    {it.image_url ? <img src={imgUrl(it.image_url)} alt={it.name} className="h-full w-full object-cover" /> : null}
+                                  </div>
+                                  <div className="font-medium">{it.name || "Item"}</div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">{Math.round(Number(it.ordered_quantity || 0))}</td>
+                              <td className="px-3 py-2">
+                                <input
+                                  className="h-8 w-20 rounded-md border bg-background px-2"
+                                  value={String(
+                                    draft[`qty__${id}`] ??
+                                      Math.max(
+                                        0,
+                                        Math.round(
+                                          Number(it?.customer_changed_quantity ?? it?.ordered_quantity ?? 0),
+                                        ),
+                                      ),
+                                  )}
+                                  onChange={(e) =>
+                                    setDraft((p) => ({
+                                      ...p,
+                                      [`qty__${id}`]: e.target.value,
+                                    }))
+                                  }
+                                  inputMode="numeric"
+                                  disabled={editLocked || !isEditable}
+                                />
+                              </td>
+                              {showGbp ? <td className="px-3 py-2">{gbp(purchase)}</td> : null}
+                              {showGbp ? <td className="px-3 py-2">{gbp(cargo)}</td> : null}
+                              <td className="px-3 py-2">{showGbp ? gbp(offered) : bdt(offered)}</td>
+                              <td className="px-3 py-2">
+                                <input
+                                  className="h-8 w-28 rounded-md border bg-background px-2"
+                                  value={String(draft[id] ?? "")}
+                                  onChange={(e) => setDraft((p) => ({ ...p, [id]: e.target.value }))}
+                                  inputMode="decimal"
+                                  disabled={editLocked || !isEditable}
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                {hasSaved && !isEditable ? (
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    onClick={() => setRowEditMode((p) => ({ ...p, [id]: true }))}
+                                    aria-label="Edit item"
+                                    title="Edit"
+                                    disabled={editLocked}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    onClick={() => saveItemDecision(it)}
+                                    disabled={!!rowSaving[id] || editLocked}
+                                    aria-label="Save item"
+                                    title="Save"
+                                  >
+                                    {rowSaving[id] ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Save className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Price is hidden. Ask admin to move order status to <span className="font-medium">priced</span> or later.
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

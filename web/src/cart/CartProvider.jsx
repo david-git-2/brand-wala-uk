@@ -4,8 +4,15 @@
 // ============================
 
 import { createContext, useContext, useEffect, useMemo, useReducer } from "react";
-import { UK_API } from "../api/ukApi";
 import { useAuth } from "../auth/AuthProvider";
+import {
+  cartAddItem,
+  cartClear,
+  cartDeleteItem,
+  cartGetItems,
+  cartUpdateItem,
+} from "@/firebase/cart";
+import { createOrderWithItems } from "@/firebase/orders";
 
 const CartContext = createContext(null);
 
@@ -130,9 +137,9 @@ export function CartProvider({ children }) {
         return;
       }
 
-      dispatch({ type: "SET_GLOBAL_LOADING", loading: true });
+        dispatch({ type: "SET_GLOBAL_LOADING", loading: true });
       try {
-        const data = await UK_API.cartGetItems(email);
+        const data = await cartGetItems(email);
         if (!alive) return;
         dispatch({ type: "SET_ITEMS", items: data.items || [] });
       } catch (e) {
@@ -168,7 +175,7 @@ export function CartProvider({ children }) {
       dispatch({ type: "SET_ITEM_LOADING", key, op: "add" });
 
       try {
-        await UK_API.cartAddItem(email, {
+        await cartAddItem(email, {
           product_id: product.product_id,
           barcode: product.barcode,
           name: product.name,
@@ -183,7 +190,7 @@ export function CartProvider({ children }) {
       } catch (e) {
         console.error("cartAddItem failed:", e);
         try {
-          const data = await UK_API.cartGetItems(email);
+          const data = await cartGetItems(email);
           dispatch({ type: "SET_ITEMS", items: data.items || [] });
         } catch {}
         throw e;
@@ -202,12 +209,12 @@ export function CartProvider({ children }) {
       dispatch({ type: "SET_ITEM_LOADING", key, op: "remove" });
 
       try {
-        await UK_API.cartDeleteItem(email, key);
+        await cartDeleteItem(email, key);
         dispatch({ type: "REMOVE_LOCAL", key });
       } catch (e) {
         console.error("cartDeleteItem failed:", e);
         try {
-          const data = await UK_API.cartGetItems(email);
+          const data = await cartGetItems(email);
           dispatch({ type: "SET_ITEMS", items: data.items || [] });
         } catch {}
         throw e;
@@ -235,11 +242,11 @@ export function CartProvider({ children }) {
       dispatch({ type: "UPDATE_QTY_LOCAL", key, qty: safeQty });
 
       try {
-        await UK_API.cartUpdateItem(email, key, safeQty);
+        await cartUpdateItem(email, key, safeQty);
       } catch (e) {
         console.error("cartUpdateItem failed:", e);
         try {
-          const data = await UK_API.cartGetItems(email);
+          const data = await cartGetItems(email);
           dispatch({ type: "SET_ITEMS", items: data.items || [] });
         } catch {}
         throw e;
@@ -274,11 +281,11 @@ export function CartProvider({ children }) {
       dispatch({ type: "CLEAR_LOCAL" });
 
       try {
-        await UK_API.cartClear(email);
+        await cartClear(email);
       } catch (e) {
         console.error("cartClear failed:", e);
         try {
-          const data = await UK_API.cartGetItems(email);
+          const data = await cartGetItems(email);
           dispatch({ type: "SET_ITEMS", items: data.items || [] });
         } catch {}
         throw e;
@@ -291,7 +298,7 @@ export function CartProvider({ children }) {
       if (!email) return;
       dispatch({ type: "SET_GLOBAL_LOADING", loading: true });
       try {
-        const data = await UK_API.cartGetItems(email);
+        const data = await cartGetItems(email);
         dispatch({ type: "SET_ITEMS", items: data.items || [] });
       } finally {
         dispatch({ type: "SET_GLOBAL_LOADING", loading: false });
@@ -309,17 +316,28 @@ export function CartProvider({ children }) {
 
       dispatch({ type: "SET_ORDER_LOADING", loading: true });
       try {
-        // Preferred (after you update ukApi.js):
-        // const res = await UK_API.createOrder(email, name);
+        const orderItems = itemsArr.map((it, idx) => ({
+          item_sl: idx + 1,
+          product_id: String(it.product?.product_id || ""),
+          barcode: String(it.product?.barcode || ""),
+          brand: String(it.product?.brand || ""),
+          name: String(it.product?.name || ""),
+          image_url: String(it.product?.imageUrl || ""),
+          case_size: Number(it.product?.case_size || 0),
+          ordered_quantity: Number(it.qty || 0),
+          buy_price_gbp: Number(it.product?.price || 0),
+        }));
 
-        // Backward compatible with your current ukApi.js signature:
-        const res = await UK_API.createOrder(email, name);
+        const res = await createOrderWithItems({
+          email,
+          creator_name: user?.name || "",
+          creator_role: user?.role || "customer",
+          order_name: name,
+          items: orderItems,
+        });
 
-        // refresh cart (server may clear)
-        try {
-          const data = await UK_API.cartGetItems(email);
-          dispatch({ type: "SET_ITEMS", items: data.items || [] });
-        } catch {}
+        await cartClear(email);
+        dispatch({ type: "SET_ITEMS", items: [] });
 
         return res;
       } finally {
@@ -370,7 +388,7 @@ export function CartProvider({ children }) {
       // order
       createOrder, // ✅ new
     };
-  }, [email, state.items, state.itemLoading, state.loading, state.open, state.orderLoading]);
+  }, [email, state.items, state.itemLoading, state.loading, state.open, state.orderLoading, user?.name, user?.role]);
 
   return <CartContext.Provider value={api}>{children}</CartContext.Provider>;
 }

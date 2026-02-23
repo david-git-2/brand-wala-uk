@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { UK_API } from "../../api/ukApi";
-import { useAuth } from "../../auth/AuthProvider";
-
+import { useAuth } from "@/auth/AuthProvider";
+import { getOrdersForViewer } from "@/firebase/orders";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,13 +11,10 @@ function OrdersSkeleton() {
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex items-center justify-between gap-4 rounded-lg border p-3">
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-56" />
-              <Skeleton className="h-3 w-40" />
-            </div>
-            <Skeleton className="h-8 w-24" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="rounded-lg border p-3">
+            <Skeleton className="h-4 w-56" />
+            <Skeleton className="mt-2 h-3 w-44" />
           </div>
         ))}
       </CardContent>
@@ -27,76 +22,53 @@ function OrdersSkeleton() {
   );
 }
 
-function statusTone(status) {
-  const s = String(status || "").toLowerCase();
-  if (s === "delivered") return "default";
-  if (s === "cancelled") return "destructive";
-  return "secondary";
-}
-
-function intish(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.round(n) : 0;
-}
-
 export default function CustomerOrders() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-
-  const [orders, setOrders] = useState([]);
+  const nav = useNavigate();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [orders, setOrders] = useState([]);
 
   useEffect(() => {
     let alive = true;
-
-    async function load() {
+    (async () => {
       if (!user?.email) return;
       setLoading(true);
       setErr("");
       try {
-        const data = await UK_API.getOrders(user.email);
-        if (!alive) return;
-        setOrders(Array.isArray(data.orders) ? data.orders : []);
+        const list = await getOrdersForViewer({ email: user.email, role: user.role });
+        if (alive) setOrders(list);
       } catch (e) {
-        if (!alive) return;
-        setErr(e?.message || "Failed to load orders");
+        if (alive) setErr(e?.message || "Failed to load orders");
       } finally {
         if (alive) setLoading(false);
       }
-    }
-
-    load();
+    })();
     return () => {
       alive = false;
     };
-  }, [user?.email]);
+  }, [user?.email, user?.role]);
 
-  const sorted = useMemo(() => {
-    const next = [...orders];
-    next.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
-    return next;
-  }, [orders]);
+  const sorted = useMemo(
+    () => [...orders].sort((a, b) => String(b.order_id).localeCompare(String(a.order_id))),
+    [orders],
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl p-4 md:p-6">
       <div className="mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">My Orders</h1>
-        <p className="text-sm text-muted-foreground">Submitted, priced, and delivery progress.</p>
+        <p className="text-sm text-muted-foreground">Your submitted orders.</p>
       </div>
 
       {err ? (
-        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {err}
-        </div>
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div>
       ) : null}
 
       {loading ? (
         <OrdersSkeleton />
       ) : sorted.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">No orders yet.</CardContent>
-        </Card>
+        <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No orders yet.</CardContent></Card>
       ) : (
         <Card>
           <CardHeader>
@@ -104,20 +76,15 @@ export default function CustomerOrders() {
           </CardHeader>
           <CardContent className="space-y-3">
             {sorted.map((o) => (
-              <div key={o.order_id} className="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="truncate text-sm font-semibold">#{o.order_sl || "-"} • {o.order_name || "Untitled"}</div>
-                    <Badge variant={statusTone(o.status)}>{o.status || "-"}</Badge>
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {o.order_id} • Qty {intish(o.total_order_qty)} • Shipped {intish(o.total_shipped_qty)} • Remaining {intish(o.total_remaining_qty)} • Total Cost (BDT) {intish(o.total_total_cost_bdt)}
+              <div key={o.order_id} className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <div className="text-sm font-semibold">{o.order_name || "Untitled"}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{o.order_id}</div>
+                  <div className="mt-1">
+                    <Badge variant="secondary">{String(o.status || "submitted").toLowerCase()}</Badge>
                   </div>
                 </div>
-
-                <Button size="sm" onClick={() => navigate(`/customer/orders/${o.order_id}`)}>
-                  View
-                </Button>
+                <Button size="sm" onClick={() => nav(`/customer/orders/${o.order_id}`)}>View</Button>
               </div>
             ))}
           </CardContent>

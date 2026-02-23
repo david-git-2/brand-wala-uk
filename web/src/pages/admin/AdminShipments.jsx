@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { UK_API } from "../../api/ukApi";
 import { useAuth } from "../../auth/AuthProvider";
+import {
+  createShipment,
+  deleteShipment,
+  listShipments,
+  updateShipment,
+} from "@/firebase/shipments";
 
 import ConfirmDeleteDialog from "../../components/common/ConfirmDeleteDialog";
 import ShipmentDialog from "../../components/shipments/ShipmentDialog";
@@ -32,9 +36,23 @@ function ShipmentsSkeleton({ rows = 8 }) {
   );
 }
 
+function tsMs(v) {
+  if (!v) return 0;
+  if (typeof v?.toDate === "function") return v.toDate().getTime();
+  if (typeof v?.seconds === "number") return v.seconds * 1000;
+  if (typeof v === "number") return v;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : 0;
+}
+
+function formatTs(v) {
+  const ms = tsMs(v);
+  if (!ms) return "-";
+  return new Date(ms).toLocaleString();
+}
+
 export default function AdminShipments() {
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   const [shipments, setShipments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,8 +75,8 @@ export default function AdminShipments() {
     setLoading(true);
     setErr("");
     try {
-      const data = await UK_API.shipmentGetAll(user.email);
-      setShipments(Array.isArray(data.shipments) ? data.shipments : []);
+      const data = await listShipments();
+      setShipments(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr(e?.message || "Failed to load shipments");
     } finally {
@@ -73,9 +91,9 @@ export default function AdminShipments() {
 
   const sorted = useMemo(() => {
     const copy = [...shipments];
-    const hasCreated = copy.some((s) => s.created_at);
+    const hasCreated = copy.some((s) => tsMs(s.created_at) > 0);
     if (hasCreated) {
-      copy.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+      copy.sort((a, b) => tsMs(b.created_at) - tsMs(a.created_at));
       return copy;
     }
     return copy.reverse();
@@ -109,9 +127,9 @@ export default function AdminShipments() {
     try {
       if (dialogMode === "edit") {
         const shipment_id = editing?.shipment_id;
-        await UK_API.shipmentUpdate(user.email, shipment_id, payload);
+        await updateShipment(shipment_id, payload);
       } else {
-        await UK_API.shipmentCreate(user.email, payload);
+        await createShipment(payload);
       }
 
       setDialogOpen(false);
@@ -130,7 +148,7 @@ export default function AdminShipments() {
     setDeleting(true);
     setDeleteError("");
     try {
-      await UK_API.shipmentDelete(user.email, deleteTarget.shipment_id);
+      await deleteShipment(deleteTarget.shipment_id);
       setDeleteOpen(false);
       setDeleteTarget(null);
       await load();
@@ -146,13 +164,10 @@ export default function AdminShipments() {
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Shipments</h1>
-          <p className="text-sm text-muted-foreground">Admin-only shipment setup (rates and cargo).</p>
+          <p className="text-sm text-muted-foreground">Admin-only shipment setup.</p>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate("/admin/orders")}>
-            Orders
-          </Button>
           <Button onClick={openCreate}>Add Shipment</Button>
         </div>
       </div>
@@ -181,8 +196,9 @@ export default function AdminShipments() {
                 <thead className="bg-muted/40 text-muted-foreground">
                   <tr className="text-left">
                     <th className="px-4 py-3 font-medium">Shipment</th>
-                    <th className="px-4 py-3 font-medium">Rates</th>
-                    <th className="px-4 py-3 font-medium">Cargo</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Avg Rate</th>
+                    <th className="px-4 py-3 font-medium">Cargo / KG</th>
                     <th className="px-4 py-3 font-medium">Updated</th>
                     <th className="px-4 py-3 font-medium" />
                   </tr>
@@ -196,27 +212,16 @@ export default function AdminShipments() {
                         <div className="text-xs text-muted-foreground">{s.shipment_id}</div>
                       </td>
 
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
-                        <div>avg: {Number(s.gbp_avg_rate || 0)}</div>
-                        <div>product: {Number(s.gbp_rate_product || 0)}</div>
-                        <div>cargo: {Number(s.gbp_rate_cargo || 0)}</div>
+                      <td className="px-4 py-3 text-xs">
+                        {s.status ? <Badge variant="secondary">{s.status}</Badge> : <span className="text-muted-foreground">-</span>}
                       </td>
 
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
-                        <div>cost/kg: {Number(s.cargo_cost_per_kg || 0)}</div>
-                      </td>
-
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{s.updated_at || "-"}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{Number(s.gbp_avg_rate || 0)}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{Number(s.cargo_cost_per_kg || 0)}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{formatTs(s.updated_at)}</td>
 
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          {s.status ? <Badge variant="secondary">{s.status}</Badge> : null}
-                          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/shipments/${s.shipment_id}`)}>
-                            View
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/shipments/${s.shipment_id}/weights`)}>
-                            Weights
-                          </Button>
                           <Button variant="outline" size="sm" onClick={() => openEdit(s)}>
                             Edit
                           </Button>

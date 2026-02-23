@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { UK_API } from "../../api/ukApi";
 import { useAuth } from "../../auth/AuthProvider";
+import {
+  getShipment,
+  listAllocationsForShipment,
+  recalcShipmentAllocations,
+  updateAllocation as updateShipmentAllocation,
+} from "@/firebase/shipments";
+import { getOrderItemsForViewer } from "@/firebase/orders";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,15 +110,15 @@ export default function AdminShipmentWeights() {
 
       try {
         const [sRes, aRes] = await Promise.all([
-          UK_API.shipmentGetOne(user.email, shipmentId),
-          UK_API.allocationGetForShipment(user.email, shipmentId),
+          getShipment(shipmentId),
+          listAllocationsForShipment(shipmentId),
         ]);
 
-        const nextAlloc = Array.isArray(aRes?.allocations) ? aRes.allocations : [];
+        const nextAlloc = Array.isArray(aRes) ? aRes : [];
         const orderIds = [...new Set(nextAlloc.map((a) => String(a.order_id || "").trim()).filter(Boolean))];
         const loaded = await Promise.all(orderIds.map(async (oid) => {
           try {
-            const r = await UK_API.getOrderItems(user.email, oid);
+            const r = await getOrderItemsForViewer({ email: user.email, role: user.role, order_id: oid });
             return [oid, Array.isArray(r.items) ? r.items : []];
           } catch (_) {
             return [oid, []];
@@ -120,7 +126,7 @@ export default function AdminShipmentWeights() {
         }));
 
         if (!alive) return;
-        setShipment(sRes?.shipment || null);
+        setShipment(sRes || null);
         setAllocations(nextAlloc);
 
         const ibo = {};
@@ -140,7 +146,7 @@ export default function AdminShipmentWeights() {
     return () => {
       alive = false;
     };
-  }, [user?.email, shipmentId]);
+  }, [user?.email, user?.role, shipmentId]);
 
   const rows = useMemo(() => {
     const itemMap = {};
@@ -248,16 +254,14 @@ export default function AdminShipmentWeights() {
         for (let j = 0; j < row.allocation_ids.length; j++) {
           const allocation_id = row.allocation_ids[j];
           // Sequential write avoids Apps Script concurrent-write collisions.
-          await UK_API.allocationUpdate(user.email, allocation_id, {
+          await updateShipmentAllocation(allocation_id, {
             unit_product_weight: gramInputToKg(d.unit_product_weight),
             unit_package_weight: gramInputToKg(d.unit_package_weight),
           });
         }
       }
 
-      await UK_API.recomputeShipment(user.email, shipmentId);
-      const orderIds = [...new Set(allocations.map((a) => String(a.order_id || "").trim()).filter(Boolean))];
-      await Promise.all(orderIds.map((oid) => UK_API.recomputeOrder(user.email, oid).catch(() => null)));
+      await recalcShipmentAllocations(shipmentId);
 
       setMsg(`Saved ${changes.length} product weight row(s).`);
     } catch (e) {
