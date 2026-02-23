@@ -1,0 +1,10 @@
+{
+  "name": "brand-wala-uk",
+  "private": true,
+  "scripts": {
+    "gas:push": "cd apps-script && clasp push",
+    "gas:deploy": "cd apps-script && clasp deploy -i AKfycbzN161iA01iTCi11_YcDQcJGWibX0ZzjGWfSibth9Vap4rueyewxwMIdhcEw3CDrlhI --description \"Update\"",
+    "gas:release": "cd apps-script && clasp push && clasp deploy -i AKfycbzN161iA01iTCi11_YcDQcJGWibX0ZzjGWfSibth9Vap4rueyewxwMIdhcEw3CDrlhI --description \"Release\"",
+    "gas:setup-sheets:web": "sh -c 'test -n \"$ADMIN_EMAIL\" || { echo \"Set ADMIN_EMAIL first\"; exit 1; }; curl -s -X POST -H \"Content-Type: application/json\" -d \"{\\\"action\\\":\\\"uk_setup_sheets\\\",\\\"email\\\":\\\"$ADMIN_EMAIL\\\"}\" \"https://script.google.com/macros/s/AKfycbzN161iA01iTCi11_YcDQcJGWibX0ZzjGWfSibth9Vap4rueyewxwMIdhcEw3CDrlhI/exec\"'"
+  }
+}

@@ -100,6 +100,7 @@ function doPost(e) {
     // Debug helper
     // ----------------------------
     if (action === "uk_debug_sheets") return _ret(UK_handleDebugSheets(body));
+    if (action === "uk_setup_sheets") return _ret(UK_handleSetupSheets(body));
 
     // ----------------------------
     // Removed legacy shipment↔order APIs (DO NOT ROUTE)

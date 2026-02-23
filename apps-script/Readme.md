@@ -280,6 +280,29 @@ clasp deployments
 
 ---
 
+## 12) Auto Setup Sheet Headers
+
+From project root:
+
+```bash
+npm run gas:release
+ADMIN_EMAIL='your-admin-email@example.com' npm run gas:setup-sheets:web
+```
+
+What this does:
+
+- Calls backend action `uk_setup_sheets`
+- Verifies user is admin
+- Creates missing tabs
+- Writes required header row for each tab
+
+⚠️ Warning:
+
+- This setup currently clears each target tab before writing headers
+- Existing data in those tabs will be removed
+
+---
+
 ### Owner / Account Note
 
 Make sure you always deploy using the correct Google account (the one that owns the script project).
