@@ -107,7 +107,7 @@ export default function CustomerOrders() {
               <div key={o.order_id} className="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <div className="truncate text-sm font-semibold">{o.order_name || "Untitled"}</div>
+                    <div className="truncate text-sm font-semibold">#{o.order_sl || "-"} • {o.order_name || "Untitled"}</div>
                     <Badge variant={statusTone(o.status)}>{o.status || "-"}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">

@@ -4,6 +4,7 @@
 // ============================
 
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { minCaseSize, useCart } from "../cart/CartProvider";
 import PlaceOrderDialog from "../components/PlaceOrderDialog";
@@ -75,6 +76,7 @@ function CartSkeleton({ rows = 3 }) {
 
 export default function Cart() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const canSeePrice = !!user?.can_see_price_gbp;
 
   const {
@@ -154,15 +156,13 @@ export default function Cart() {
     try {
       setCreatingOrder(true);
 
-      const res = await createOrder(orderName);
+      await createOrder(orderName);
 
       setPlaceOpen(false);
 
       // optional: clear (server may also clear)
       await clear();
-
-      // eslint-disable-next-line no-alert
-      alert(`Order created: ${res?.order_id || "success"}`);
+      navigate("/orders");
     } catch (e) {
       setOrderError(e?.message ? e.message : "Failed to create order.");
     } finally {

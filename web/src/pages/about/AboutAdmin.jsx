@@ -10,6 +10,21 @@ export default function AboutAdmin() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Required Flow Before Processing</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p><strong>Step 1:</strong> Setup master data first: users (role/access), pricing modes (active), and shipment rates.</p>
+            <p><strong>Step 2:</strong> Customer places order (status <code>submitted</code>).</p>
+            <p><strong>Step 3:</strong> Admin applies pricing mode + profit and runs <code>Price</code> (status <code>priced</code>).</p>
+            <p><strong>Step 4:</strong> Customer accepts or sends counter; admin finalizes deal (status <code>finalized</code>).</p>
+            <p><strong>Step 5:</strong> Create shipment allocation rows: select <code>order_item_id</code>, set allocated qty, shipped qty, and unit weights.</p>
+            <p><strong>Step 6:</strong> Run recompute: shipment first, then related orders.</p>
+            <p><strong>Step 7:</strong> Only then move order to <code>processing</code>.</p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle className="text-base">1. Setup</CardTitle>
@@ -62,6 +77,7 @@ export default function AboutAdmin() {
             <p>GBP fields are rounded to 2 decimals. BDT fields are rounded to 0 decimals.</p>
             <p>Over-shipping is blocked: total shipped qty for an item cannot exceed ordered qty.</p>
             <p>Do not edit weights in order items. Weight source of truth is shipment allocation.</p>
+            <p>Pre-processing checklist: pricing mode selected, order finalized, shipment exists, allocation rows created, recompute completed.</p>
           </CardContent>
         </Card>
       </div>

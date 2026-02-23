@@ -6,6 +6,7 @@ function UK_handleGetOrders(body) {
   const role = String(user.role || "customer").toLowerCase();
 
   const sh = ukGetSheet_("uk_orders");
+  if (typeof UK_ensureOrderSerials_ === "function") UK_ensureOrderSerials_(sh);
   const m = UK_getMapStrict_(sh, [
     "order_id", "order_name", "creator_email", "creator_name", "creator_role",
     "creator_can_see_price_gbp", "status", "created_at", "updated_at"
@@ -22,12 +23,14 @@ function UK_handleGetOrders(body) {
     .map(function(r) {
       const obj = {
         order_id: r.order_id,
+        order_sl: r.order_sl === undefined || r.order_sl === "" ? "" : Number(r.order_sl),
         order_name: r.order_name,
         creator_email: r.creator_email,
         creator_name: r.creator_name,
         creator_role: r.creator_role,
         creator_can_see_price_gbp: ukToBool_(r.creator_can_see_price_gbp),
         status: r.status,
+        counter_enabled: r.counter_enabled === undefined ? true : ukToBool_(r.counter_enabled),
         created_at: r.created_at,
         updated_at: r.updated_at,
       };

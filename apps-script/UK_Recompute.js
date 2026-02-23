@@ -114,7 +114,7 @@ function UK_recomputeShipment_(shipment_id) {
 
   const shipCtx = {
     shipment_id: shipment_id,
-    gbp_avg_rate: ukNum_(shipment[mS.gbp_avg_rate]),
+    gbp_avg_rate: UK_effectiveAvgRate_(shipment[mS.gbp_avg_rate], shipment[mS.gbp_rate_product], shipment[mS.gbp_rate_cargo]),
     gbp_rate_product: ukNum_(shipment[mS.gbp_rate_product]),
     gbp_rate_cargo: ukNum_(shipment[mS.gbp_rate_cargo]),
     cargo_cost_per_kg: ukNum_(shipment[mS.cargo_cost_per_kg])
@@ -240,10 +240,14 @@ function UK_recomputeShipment_(shipment_id) {
 function UK_computeAllocationAmounts_(ctx) {
   const shipped_qty = ukNum_(ctx.shipped_qty);
   const allocated_qty = ukNum_(ctx.allocated_qty);
+  // For planning phase (before actual shipped_qty is entered), use allocated_qty
+  // so offered/cost values are visible. Once shipped_qty > 0, it becomes the source.
+  const qty_for_amounts = shipped_qty > 0 ? shipped_qty : allocated_qty;
 
   const unit_total_weight = ukNum_(ctx.unit_product_weight) + ukNum_(ctx.unit_package_weight);
   const allocated_weight = unit_total_weight * allocated_qty;
   const shipped_weight = unit_total_weight * shipped_qty;
+  const weight_for_amounts = unit_total_weight * qty_for_amounts;
 
   const buy_price_gbp = ukNum_(ctx.buy_price_gbp);
   const profit_rate = ukNum_(ctx.profit_rate);
@@ -252,14 +256,14 @@ function UK_computeAllocationAmounts_(ctx) {
   const ship = ctx.shipment || {};
 
   // --- Product cost ---
-  const product_cost_gbp = UK_roundGBP_(shipped_qty * buy_price_gbp);
+  const product_cost_gbp = UK_roundGBP_(qty_for_amounts * buy_price_gbp);
 
   const product_cost_bdt = (String(pm.conversion_rule) === "SEPARATE_RATES")
     ? UK_roundBDT_(product_cost_gbp * ukNum_(ship.gbp_rate_product))
     : UK_roundBDT_(product_cost_gbp * ukNum_(ship.gbp_avg_rate));
 
   // --- Cargo cost ---
-  const cargo_cost_gbp = UK_roundGBP_(shipped_weight * ukNum_(ship.cargo_cost_per_kg));
+  const cargo_cost_gbp = UK_roundGBP_(weight_for_amounts * ukNum_(ship.cargo_cost_per_kg));
 
   const cargo_cost_bdt = (String(pm.conversion_rule) === "SEPARATE_RATES")
     ? UK_roundBDT_(cargo_cost_gbp * ukNum_(ship.gbp_rate_cargo))
@@ -279,7 +283,7 @@ function UK_computeAllocationAmounts_(ctx) {
       ? UK_roundGBP_(finalUnitNum)
       : UK_roundGBP_(buy_price_gbp * (1 + profit_rate));
 
-    const product_revenue_gbp = UK_roundGBP_(shipped_qty * sell_unit_gbp);
+    const product_revenue_gbp = UK_roundGBP_(qty_for_amounts * sell_unit_gbp);
 
     // Choose conversion rate for revenue_bdt
     const rs = String(pm.rate_source_revenue || "").toLowerCase();
@@ -300,7 +304,7 @@ function UK_computeAllocationAmounts_(ctx) {
     const finalUnitNum = hasFinal ? Number(ctx.final_unit_bdt) : NaN;
 
     if (hasFinal && isFinite(finalUnitNum)) {
-      revenue_bdt = UK_roundBDT_(shipped_qty * finalUnitNum);
+      revenue_bdt = UK_roundBDT_(qty_for_amounts * finalUnitNum);
     } else {
       revenue_bdt = UK_roundBDT_(landed_cost_bdt * (1 + profit_rate));
     }
@@ -408,9 +412,30 @@ function UK_handleRecomputeOrder(body) {
   const order_id = String(body.order_id || "").trim();
   if (!order_id) throw new Error("order_id is required");
 
+  // Ensure allocation money fields are fresh before rolling up order totals.
+  UK_recomputeShipmentsForOrder_(order_id);
   UK_recomputeOrder_(order_id);
+  if (typeof UK_refreshOfferedUnitsForOrder_ === "function") {
+    UK_refreshOfferedUnitsForOrder_(order_id, body.shipment_id);
+  }
 
   return { success: true, order_id };
+}
+
+function UK_recomputeShipmentsForOrder_(order_id) {
+  const shAlloc = ukGetSheet_("uk_shipment_allocation");
+  const mA = UK_getMapStrict_(shAlloc, ["order_id", "shipment_id"]);
+  const rows = ukReadObjects_(shAlloc).rows;
+  const seen = {};
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (String(r.order_id || "").trim() !== order_id) continue;
+    const sid = String(r.shipment_id || "").trim();
+    if (!sid || seen[sid]) continue;
+    seen[sid] = true;
+    UK_recomputeShipment_(sid);
+  }
 }
 
 function UK_recomputeOrder_(order_id) {

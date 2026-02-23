@@ -8,6 +8,7 @@ function UK_handleCreateOrder(body) {
 
   const shOrders = ukGetSheet_("uk_orders");
   const shItems = ukGetSheet_("uk_order_items");
+  const orderSlCol = UK_ensureOrderSerials_(shOrders);
 
   const mO = UK_getMapStrict_(shOrders, [
     "order_id", "order_name", "creator_email", "creator_name", "creator_role",
@@ -54,6 +55,7 @@ function UK_handleCreateOrder(body) {
 
   const orderRow = new Array(shOrders.getLastColumn()).fill("");
   orderRow[mO.order_id] = order_id;
+  if (orderSlCol != null) orderRow[orderSlCol] = UK_nextOrderSerial_(shOrders, orderSlCol);
   orderRow[mO.order_name] = order_name;
   orderRow[mO.creator_email] = email;
   orderRow[mO.creator_name] = String(user.name || "").trim();
@@ -65,6 +67,7 @@ function UK_handleCreateOrder(body) {
 
   const mapO = ukHeaderMap_(shOrders);
   if (mapO.total_order_qty != null) orderRow[mapO.total_order_qty] = lines.reduce(function(s, x) { return s + ukNum_(x.ordered_quantity, 0); }, 0);
+  if (mapO.counter_enabled != null) orderRow[mapO.counter_enabled] = 1;
   if (mapO.total_allocated_qty != null) orderRow[mapO.total_allocated_qty] = 0;
   if (mapO.total_shipped_qty != null) orderRow[mapO.total_shipped_qty] = 0;
   if (mapO.total_remaining_qty != null) orderRow[mapO.total_remaining_qty] = orderRow[mapO.total_order_qty] || 0;
@@ -127,6 +130,69 @@ function UK_handleCreateOrder(body) {
     status: "submitted",
     created_items: outRows.length,
   };
+}
+
+function UK_ensureOrderSerials_(shOrders) {
+  let map = ukHeaderMap_(shOrders);
+  let col = map.order_sl;
+
+  if (col == null) {
+    const newCol = shOrders.getLastColumn() + 1;
+    shOrders.getRange(1, newCol).setValue("order_sl");
+    col = newCol - 1;
+    map = ukHeaderMap_(shOrders);
+  }
+
+  const orderIdCol = map.order_id;
+  if (orderIdCol == null) return col;
+
+  const lastRow = shOrders.getLastRow();
+  if (lastRow < 2) return col;
+
+  const createdCol = map.created_at;
+  const data = shOrders.getRange(2, 1, lastRow - 1, shOrders.getLastColumn()).getValues();
+
+  let maxSl = 0;
+  const missing = [];
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const oid = String(row[orderIdCol] || "").trim();
+    if (!oid) continue;
+    const sl = Number(row[col]);
+    if (Number.isFinite(sl) && sl > 0) {
+      if (sl > maxSl) maxSl = sl;
+    } else {
+      missing.push({
+        i: i,
+        t: createdCol != null && row[createdCol] ? new Date(row[createdCol]).getTime() : 0,
+      });
+    }
+  }
+
+  if (!missing.length) return col;
+  missing.sort(function(a, b) {
+    if (a.t !== b.t) return a.t - b.t;
+    return a.i - b.i;
+  });
+
+  for (let j = 0; j < missing.length; j++) {
+    maxSl += 1;
+    data[missing[j].i][col] = maxSl;
+  }
+  shOrders.getRange(2, 1, lastRow - 1, shOrders.getLastColumn()).setValues(data);
+  return col;
+}
+
+function UK_nextOrderSerial_(shOrders, orderSlCol) {
+  const lastRow = shOrders.getLastRow();
+  if (lastRow < 2) return 1;
+  const vals = shOrders.getRange(2, orderSlCol + 1, lastRow - 1, 1).getValues();
+  let maxSl = 0;
+  for (let i = 0; i < vals.length; i++) {
+    const n = Number(vals[i][0]);
+    if (Number.isFinite(n) && n > maxSl) maxSl = n;
+  }
+  return maxSl + 1;
 }
 
 function UK_createGetCartItems_(email) {

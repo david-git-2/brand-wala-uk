@@ -132,6 +132,20 @@ function UK_handlePricingModeDelete(body) {
   return { success: true, pricing_mode_id: id, deleted: true };
 }
 
+function UK_handlePricingModeSeedDefaults(body) {
+  body = body || {};
+  const user = ukRequireActiveUserOrThrow_(body);
+  UK_assertAdmin_(user);
+
+  const result = UK_pricingModesEnsureDefaults_();
+  return {
+    success: true,
+    created: result.created,
+    skipped_existing: result.skipped,
+    pricing_mode_ids: result.ids,
+  };
+}
+
 function UK_pmAssertUniqueId_(sheet, idCol0, idVal) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return;
@@ -164,4 +178,69 @@ function UK_pmGenerateId_(sheet, map, body) {
     n += 1;
   }
   return candidate;
+}
+
+function UK_pricingModesEnsureDefaults_() {
+  const sh = ukGetSheet_("uk_pricing_modes");
+  const m = UK_getMapStrict_(sh, [
+    "pricing_mode_id", "name", "version", "currency", "profit_base", "cargo_charge",
+    "conversion_rule", "rate_source_revenue", "active", "notes"
+  ]);
+
+  const defaults = [
+    {
+      pricing_mode_id: "PM_GBP_PROD_V1",
+      name: "GBP Product Profit",
+      version: "v1",
+      currency: "GBP",
+      profit_base: "PRODUCT_ONLY",
+      cargo_charge: "PASS_THROUGH",
+      conversion_rule: "SEPARATE_RATES",
+      rate_source_revenue: "avg",
+      active: 1,
+      notes: "Profit on product only in GBP; cargo passed through separately."
+    },
+    {
+      pricing_mode_id: "PM_BDT_LANDED_V1",
+      name: "BDT Landed Profit",
+      version: "v1",
+      currency: "BDT",
+      profit_base: "PRODUCT_PLUS_CARGO",
+      cargo_charge: "INCLUDED_IN_PRICE",
+      conversion_rule: "SEPARATE_RATES",
+      rate_source_revenue: "avg",
+      active: 1,
+      notes: "Profit on full landed cost (product + cargo) in BDT."
+    }
+  ];
+
+  let created = 0;
+  let skipped = 0;
+  const ids = [];
+
+  for (let i = 0; i < defaults.length; i++) {
+    const d = defaults[i];
+    ids.push(d.pricing_mode_id);
+    const existing = ukFindRowById_(sh, m.pricing_mode_id, d.pricing_mode_id);
+    if (existing) {
+      skipped += 1;
+      continue;
+    }
+
+    const row = new Array(sh.getLastColumn()).fill("");
+    row[m.pricing_mode_id] = d.pricing_mode_id;
+    row[m.name] = d.name;
+    row[m.version] = d.version;
+    row[m.currency] = d.currency;
+    row[m.profit_base] = d.profit_base;
+    row[m.cargo_charge] = d.cargo_charge;
+    row[m.conversion_rule] = d.conversion_rule;
+    row[m.rate_source_revenue] = d.rate_source_revenue;
+    row[m.active] = d.active;
+    row[m.notes] = d.notes;
+    sh.appendRow(row);
+    created += 1;
+  }
+
+  return { created: created, skipped: skipped, ids: ids };
 }

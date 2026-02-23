@@ -10,6 +10,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { CopyCheck, Save, SaveAll } from "lucide-react";
 
 function SkeletonRows() {
   return (
@@ -29,10 +39,6 @@ function SkeletonRows() {
       </CardContent>
     </Card>
   );
-}
-
-function isGBPMode(id) {
-  return String(id || "").toUpperCase().includes("GBP");
 }
 
 function n0(v) {
@@ -59,6 +65,17 @@ export default function AdminOrderDetails() {
   const [topMsg, setTopMsg] = useState("");
 
   const [actionBusy, setActionBusy] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteText, setDeleteText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [bulk, setBulk] = useState({
+    pricing_mode_id: "",
+    profit_rate: "",
+    offered_unit_gbp: "",
+    offered_unit_bdt: "",
+    final_unit_gbp: "",
+    final_unit_bdt: "",
+  });
 
   async function loadAll() {
     if (!user?.email || !orderId) return;
@@ -88,12 +105,12 @@ export default function AdminOrderDetails() {
         const id = String(it.order_item_id || "").trim();
         if (!id) continue;
         next[id] = {
-          pricing_mode_id: prev[id]?.pricing_mode_id ?? String(it.pricing_mode_id || ""),
-          profit_rate: prev[id]?.profit_rate ?? String(it.profit_rate ?? ""),
-          offered_unit_gbp: prev[id]?.offered_unit_gbp ?? String(it.offered_unit_gbp ?? ""),
-          offered_unit_bdt: prev[id]?.offered_unit_bdt ?? String(it.offered_unit_bdt ?? ""),
-          final_unit_gbp: prev[id]?.final_unit_gbp ?? String(it.final_unit_gbp ?? ""),
-          final_unit_bdt: prev[id]?.final_unit_bdt ?? String(it.final_unit_bdt ?? ""),
+          pricing_mode_id: String(it.pricing_mode_id || ""),
+          profit_rate: String(it.profit_rate ?? ""),
+          offered_unit_gbp: String(it.offered_unit_gbp ?? ""),
+          offered_unit_bdt: String(it.offered_unit_bdt ?? ""),
+          final_unit_gbp: String(it.final_unit_gbp ?? ""),
+          final_unit_bdt: String(it.final_unit_bdt ?? ""),
         };
       }
       return next;
@@ -125,6 +142,9 @@ export default function AdminOrderDetails() {
   }, [user?.email, orderId]);
 
   const status = String(order?.status || "").toLowerCase();
+  const counterEnabled = order?.counter_enabled !== false;
+  const canPermanentDelete = status === "delivered" || status === "cancelled";
+  const deleteMatchText = String(order?.order_name || order?.order_id || "").trim();
 
   const modeOptions = useMemo(
     () => pricingModes.filter((m) => Number(m.active) === 1 || String(m.active).toLowerCase() === "true"),
@@ -135,6 +155,13 @@ export default function AdminOrderDetails() {
     const pm = modeOptions.find((m) => String(m.pricing_mode_id).toUpperCase() === "PM_GBP_PROD_V1");
     return pm?.pricing_mode_id || modeOptions[0]?.pricing_mode_id || "";
   }, [modeOptions]);
+
+  useEffect(() => {
+    setBulk((p) => ({
+      ...p,
+      pricing_mode_id: p.pricing_mode_id || defaultModeId || "",
+    }));
+  }, [defaultModeId]);
 
   async function saveItem(item) {
     const id = String(item.order_item_id || "").trim();
@@ -181,7 +208,81 @@ export default function AdminOrderDetails() {
     }
   }
 
+  async function onPermanentDelete() {
+    if (!canPermanentDelete || !deleteMatchText) return;
+    if (String(deleteText || "").trim() !== deleteMatchText) return;
+
+    setDeleting(true);
+    setTopMsg("");
+    try {
+      await UK_API.deleteOrder(user.email, orderId);
+      setDeleteOpen(false);
+      navigate("/admin/orders");
+    } catch (e) {
+      setTopMsg(e?.message || "Failed to permanently delete order");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function buildPatchFromBulk(itemId) {
+    const row = { order_item_id: itemId };
+    if (bulk.pricing_mode_id !== "") row.pricing_mode_id = bulk.pricing_mode_id;
+    if (bulk.profit_rate !== "") row.profit_rate = Number(bulk.profit_rate);
+    if (bulk.offered_unit_gbp !== "") row.offered_unit_gbp = Number(bulk.offered_unit_gbp);
+    if (bulk.offered_unit_bdt !== "") row.offered_unit_bdt = Number(bulk.offered_unit_bdt);
+    if (bulk.final_unit_gbp !== "") row.final_unit_gbp = Number(bulk.final_unit_gbp);
+    if (bulk.final_unit_bdt !== "") row.final_unit_bdt = Number(bulk.final_unit_bdt);
+    return row;
+  }
+
+  function applyBulkToDraft() {
+    setDraft((prev) => {
+      const next = { ...prev };
+      for (const it of items) {
+        const id = String(it.order_item_id || "").trim();
+        if (!id) continue;
+        next[id] = {
+          ...(next[id] || {}),
+          ...(bulk.pricing_mode_id !== "" ? { pricing_mode_id: bulk.pricing_mode_id } : {}),
+          ...(bulk.profit_rate !== "" ? { profit_rate: bulk.profit_rate } : {}),
+          ...(bulk.offered_unit_gbp !== "" ? { offered_unit_gbp: bulk.offered_unit_gbp } : {}),
+          ...(bulk.offered_unit_bdt !== "" ? { offered_unit_bdt: bulk.offered_unit_bdt } : {}),
+          ...(bulk.final_unit_gbp !== "" ? { final_unit_gbp: bulk.final_unit_gbp } : {}),
+          ...(bulk.final_unit_bdt !== "" ? { final_unit_bdt: bulk.final_unit_bdt } : {}),
+        };
+      }
+      return next;
+    });
+    setTopMsg("Applied bulk values to all item forms. Click Save per row or use Apply & Save All.");
+  }
+
+  async function applyAndSaveBulk() {
+    if (!items.length) return;
+    const payload = items
+      .map((it) => buildPatchFromBulk(String(it.order_item_id || "").trim()))
+      .filter((r) => Object.keys(r).length > 1);
+
+    if (!payload.length) {
+      setTopMsg("Enter at least one bulk field value before Apply & Save All.");
+      return;
+    }
+
+    setActionBusy(true);
+    setTopMsg("");
+    try {
+      await UK_API.updateOrderItems(user.email, orderId, payload);
+      await loadAll();
+      setTopMsg("Bulk values saved for all items.");
+    } catch (e) {
+      setTopMsg(e?.message || "Bulk update failed");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   return (
+    <TooltipProvider delayDuration={120}>
     <div className="mx-auto w-full max-w-7xl p-4 md:p-6">
       <div className="mb-4 flex items-start justify-between gap-2">
         <div>
@@ -207,7 +308,26 @@ export default function AdminOrderDetails() {
               <Button
                 size="sm"
                 disabled={actionBusy || !(status === "submitted" || status === "under_review") || !defaultModeId}
-                onClick={() => runAction(() => UK_API.orderPrice(user.email, orderId, defaultModeId, 0.1), "Order priced")}
+                onClick={() => {
+                  const rows = items.map((it) => {
+                    const itemId = String(it.order_item_id || "").trim();
+                    const d = draft[itemId] || {};
+                    return {
+                      order_item_id: itemId,
+                      pricing_mode_id: String(d.pricing_mode_id || it.pricing_mode_id || defaultModeId || "").trim(),
+                      profit_rate:
+                        d.profit_rate !== "" && d.profit_rate !== undefined
+                          ? Number(d.profit_rate)
+                          : (it.profit_rate !== "" && it.profit_rate !== undefined ? Number(it.profit_rate) : 0.1),
+                    };
+                  }).filter((r) => r.order_item_id && r.pricing_mode_id);
+
+                  const firstMode = rows[0]?.pricing_mode_id || defaultModeId;
+                  return runAction(
+                    () => UK_API.orderPrice(user.email, orderId, firstMode, 0.1, rows),
+                    "Order priced",
+                  );
+                }}
               >
                 Price
               </Button>
@@ -262,10 +382,37 @@ export default function AdminOrderDetails() {
               >
                 Cancel
               </Button>
+
+              <Button
+                size="sm"
+                variant={counterEnabled ? "outline" : "default"}
+                disabled={actionBusy || status === "delivered" || status === "cancelled"}
+                onClick={() =>
+                  runAction(
+                    () => UK_API.updateOrder(user.email, orderId, { counter_enabled: counterEnabled ? 0 : 1 }),
+                    counterEnabled ? "Counter offer disabled" : "Counter offer enabled",
+                  )
+                }
+              >
+                {counterEnabled ? "Disable Counter" : "Enable Counter"}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={actionBusy || !canPermanentDelete}
+                onClick={() => {
+                  setDeleteText("");
+                  setDeleteOpen(true);
+                }}
+              >
+                Permanent Delete
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
             Qty {n0(order.total_order_qty)} • Alloc {n0(order.total_allocated_qty)} • Shipped {n0(order.total_shipped_qty)} • Remaining {n0(order.total_remaining_qty)} • Revenue {n0(order.total_revenue_bdt)} • Cost {n0(order.total_total_cost_bdt)} • Profit {n0(order.total_profit_bdt)}
+            <div className="mt-1">Counter offer: <span className="font-medium text-foreground">{counterEnabled ? "Enabled" : "Disabled"}</span></div>
           </CardContent>
         </Card>
       ) : null}
@@ -274,6 +421,78 @@ export default function AdminOrderDetails() {
         <SkeletonRows />
       ) : (
         <>
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-base">Bulk Set All Items</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 md:grid-cols-6">
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Pricing Mode</label>
+                  <Select
+                    value={bulk.pricing_mode_id || "__none__"}
+                    onValueChange={(v) => setBulk((p) => ({ ...p, pricing_mode_id: v === "__none__" ? "" : v }))}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="keep existing" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">keep existing</SelectItem>
+                      {modeOptions.map((m) => (
+                        <SelectItem key={m.pricing_mode_id} value={m.pricing_mode_id}>
+                          {m.pricing_mode_id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Profit Rate</label>
+                  <Input className="h-8 text-xs" value={bulk.profit_rate} onChange={(e) => setBulk((p) => ({ ...p, profit_rate: e.target.value }))} placeholder="keep existing" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Offered GBP</label>
+                  <Input className="h-8 text-xs" value={bulk.offered_unit_gbp} onChange={(e) => setBulk((p) => ({ ...p, offered_unit_gbp: e.target.value }))} placeholder="keep existing" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Offered BDT</label>
+                  <Input className="h-8 text-xs" value={bulk.offered_unit_bdt} onChange={(e) => setBulk((p) => ({ ...p, offered_unit_bdt: e.target.value }))} placeholder="keep existing" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Final GBP</label>
+                  <Input className="h-8 text-xs" value={bulk.final_unit_gbp} onChange={(e) => setBulk((p) => ({ ...p, final_unit_gbp: e.target.value }))} placeholder="keep existing" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">Final BDT</label>
+                  <Input className="h-8 text-xs" value={bulk.final_unit_bdt} onChange={(e) => setBulk((p) => ({ ...p, final_unit_bdt: e.target.value }))} placeholder="keep existing" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" disabled={actionBusy} onClick={applyBulkToDraft}>
+                      <CopyCheck className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Apply To All (draft only)</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="icon" disabled={actionBusy} onClick={applyAndSaveBulk}>
+                      <SaveAll className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{actionBusy ? "Saving..." : "Apply & Save All"}</TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Leave any field empty to keep existing value for that field.
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="mb-4">
             <CardHeader>
               <CardTitle className="text-base">Order Items</CardTitle>
@@ -285,14 +504,13 @@ export default function AdminOrderDetails() {
                 items.map((it) => {
                   const itemId = String(it.order_item_id || "").trim();
                   const rowDraft = draft[itemId] || {};
-                  const modeGBP = isGBPMode(rowDraft.pricing_mode_id || it.pricing_mode_id);
 
                   return (
                     <div key={itemId} className="rounded-lg border p-3">
                       <div className="text-sm font-semibold">{it.name || "Unnamed item"}</div>
                       <div className="text-xs text-muted-foreground">{itemId} • qty {n0(it.ordered_quantity)} • alloc {n0(it.allocated_qty_total)} • shipped {n0(it.shipped_qty_total)} • remaining {n0(it.remaining_qty)} • {it.item_status || "-"}</div>
 
-                      <div className="mt-3 grid gap-2 md:grid-cols-6">
+                      <div className="mt-3 grid gap-2 md:grid-cols-9">
                         <div>
                           <label className="mb-1 block text-xs text-muted-foreground">Pricing Mode</label>
                           <Select
@@ -327,16 +545,16 @@ export default function AdminOrderDetails() {
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-xs text-muted-foreground">Offered Unit</label>
+                          <label className="mb-1 block text-xs text-muted-foreground">Offered GBP</label>
                           <Input
                             className="h-8 text-xs"
-                            value={String(modeGBP ? rowDraft.offered_unit_gbp ?? "" : rowDraft.offered_unit_bdt ?? "")}
+                            value={String(rowDraft.offered_unit_gbp ?? "")}
                             onChange={(e) =>
                               setDraft((p) => ({
                                 ...p,
                                 [itemId]: {
                                   ...p[itemId],
-                                  [modeGBP ? "offered_unit_gbp" : "offered_unit_bdt"]: e.target.value,
+                                  offered_unit_gbp: e.target.value,
                                 },
                               }))
                             }
@@ -345,23 +563,66 @@ export default function AdminOrderDetails() {
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-xs text-muted-foreground">Customer Unit</label>
-                          <div className="h-8 rounded-md border px-2 py-1 text-xs text-muted-foreground">
-                            {modeGBP ? it.customer_unit_gbp ?? "-" : it.customer_unit_bdt ?? "-"}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-xs text-muted-foreground">Final Unit</label>
+                          <label className="mb-1 block text-xs text-muted-foreground">Offered BDT</label>
                           <Input
                             className="h-8 text-xs"
-                            value={String(modeGBP ? rowDraft.final_unit_gbp ?? "" : rowDraft.final_unit_bdt ?? "")}
+                            value={String(rowDraft.offered_unit_bdt ?? "")}
                             onChange={(e) =>
                               setDraft((p) => ({
                                 ...p,
                                 [itemId]: {
                                   ...p[itemId],
-                                  [modeGBP ? "final_unit_gbp" : "final_unit_bdt"]: e.target.value,
+                                  offered_unit_bdt: e.target.value,
+                                },
+                              }))
+                            }
+                            inputMode="decimal"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Customer GBP</label>
+                          <div className="h-8 rounded-md border px-2 py-1 text-xs text-muted-foreground">
+                            {it.customer_unit_gbp ?? "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Customer BDT</label>
+                          <div className="h-8 rounded-md border px-2 py-1 text-xs text-muted-foreground">
+                            {it.customer_unit_bdt ?? "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Final GBP</label>
+                          <Input
+                            className="h-8 text-xs"
+                            value={String(rowDraft.final_unit_gbp ?? "")}
+                            onChange={(e) =>
+                              setDraft((p) => ({
+                                ...p,
+                                [itemId]: {
+                                  ...p[itemId],
+                                  final_unit_gbp: e.target.value,
+                                },
+                              }))
+                            }
+                            inputMode="decimal"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Final BDT</label>
+                          <Input
+                            className="h-8 text-xs"
+                            value={String(rowDraft.final_unit_bdt ?? "")}
+                            onChange={(e) =>
+                              setDraft((p) => ({
+                                ...p,
+                                [itemId]: {
+                                  ...p[itemId],
+                                  final_unit_bdt: e.target.value,
                                 },
                               }))
                             }
@@ -370,9 +631,14 @@ export default function AdminOrderDetails() {
                         </div>
 
                         <div className="flex items-end">
-                          <Button size="sm" disabled={!!saving[itemId]} onClick={() => saveItem(it)}>
-                            {saving[itemId] ? "Saving..." : "Save"}
-                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button size="icon" disabled={!!saving[itemId]} onClick={() => saveItem(it)}>
+                                <Save className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{saving[itemId] ? "Saving..." : "Save row"}</TooltipContent>
+                          </Tooltip>
                         </div>
                       </div>
 
@@ -423,6 +689,52 @@ export default function AdminOrderDetails() {
           </Card>
         </>
       )}
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(next) => {
+          if (!deleting) setDeleteOpen(next);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Permanently Delete Order</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. It will delete the order, its items, and related allocations.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              Only allowed when status is delivered or cancelled.
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Type this exact order name to confirm:
+              <span className="ml-1 font-semibold text-foreground">{deleteMatchText || "-"}</span>
+            </div>
+            <Input
+              value={deleteText}
+              onChange={(e) => setDeleteText(e.target.value)}
+              placeholder="Type exact order name"
+              disabled={deleting}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={onPermanentDelete}
+              disabled={deleting || String(deleteText || "").trim() !== deleteMatchText}
+            >
+              {deleting ? "Deleting..." : "Delete Permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+    </TooltipProvider>
   );
 }

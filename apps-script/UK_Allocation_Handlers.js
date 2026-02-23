@@ -74,18 +74,10 @@ function UK_handleAllocationUpdate(body) {
     "unit_total_weight", "allocated_weight", "shipped_weight"
   ]);
 
-  const lastRow = sh.getLastRow();
-  if (lastRow < 2) throw new Error("Allocation not found: " + allocation_id);
-  const range = sh.getRange(2, 1, lastRow - 1, sh.getLastColumn());
-  const data = range.getValues();
+  const found = ukFindRowIndexById_(sh, m.allocation_id, allocation_id);
+  if (found.rowIndex < 0) throw new Error("Allocation not found: " + allocation_id);
 
-  let idx = -1;
-  for (let i = 0; i < data.length; i++) {
-    if (String(data[i][m.allocation_id]) === allocation_id) { idx = i; break; }
-  }
-  if (idx === -1) throw new Error("Allocation not found: " + allocation_id);
-
-  const row = data[idx];
+  const row = sh.getRange(found.rowIndex, 1, 1, sh.getLastColumn()).getValues()[0];
   const oldOrderItemId = String(row[m.order_item_id] || "");
   if (body.order_item_id !== undefined && String(body.order_item_id || "") !== oldOrderItemId) {
     throw new Error("order_item_id cannot be changed on update");
@@ -111,8 +103,7 @@ function UK_handleAllocationUpdate(body) {
   row[m.allocated_weight] = ukNum_(row[m.allocated_qty], 0) * utw;
   row[m.shipped_weight] = ukNum_(row[m.shipped_qty], 0) * utw;
 
-  data[idx] = row;
-  range.setValues(data);
+  sh.getRange(found.rowIndex, 1, 1, sh.getLastColumn()).setValues([row]);
 
   return { success: true, allocation_id: allocation_id };
 }

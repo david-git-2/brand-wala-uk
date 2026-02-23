@@ -20,11 +20,15 @@ function UK_handleShipmentCreate(body) {
   }
 
   const row = new Array(sh.getLastColumn()).fill("");
+  const pRate = ukNum_(body.gbp_rate_product, 0);
+  const cRate = ukNum_(body.gbp_rate_cargo, 0);
+  const avgRate = UK_deriveAvgRate_(body.gbp_avg_rate, pRate, cRate);
+
   row[m.shipment_id] = shipment_id;
   row[m.name] = name;
-  row[m.gbp_avg_rate] = UK_roundGBP_(ukNum_(body.gbp_avg_rate, 0));
-  row[m.gbp_rate_product] = UK_roundGBP_(ukNum_(body.gbp_rate_product, 0));
-  row[m.gbp_rate_cargo] = UK_roundGBP_(ukNum_(body.gbp_rate_cargo, 0));
+  row[m.gbp_avg_rate] = avgRate;
+  row[m.gbp_rate_product] = UK_roundGBP_(pRate);
+  row[m.gbp_rate_cargo] = UK_roundGBP_(cRate);
   row[m.cargo_cost_per_kg] = UK_roundGBP_(ukNum_(body.cargo_cost_per_kg, 0));
   row[m.created_at] = new Date();
   row[m.updated_at] = new Date();
@@ -122,9 +126,23 @@ function UK_handleShipmentUpdate(body) {
   if (found.rowIndex < 0) throw new Error("Shipment not found: " + shipment_id);
 
   if (body.name !== undefined) sh.getRange(found.rowIndex, m.name + 1).setValue(String(body.name || "").trim());
-  if (body.gbp_avg_rate !== undefined) sh.getRange(found.rowIndex, m.gbp_avg_rate + 1).setValue(UK_roundGBP_(ukNum_(body.gbp_avg_rate, 0)));
-  if (body.gbp_rate_product !== undefined) sh.getRange(found.rowIndex, m.gbp_rate_product + 1).setValue(UK_roundGBP_(ukNum_(body.gbp_rate_product, 0)));
-  if (body.gbp_rate_cargo !== undefined) sh.getRange(found.rowIndex, m.gbp_rate_cargo + 1).setValue(UK_roundGBP_(ukNum_(body.gbp_rate_cargo, 0)));
+
+  const cur = found.row || [];
+  const nextProduct = body.gbp_rate_product !== undefined ? ukNum_(body.gbp_rate_product, 0) : ukNum_(cur[m.gbp_rate_product], 0);
+  const nextCargo = body.gbp_rate_cargo !== undefined ? ukNum_(body.gbp_rate_cargo, 0) : ukNum_(cur[m.gbp_rate_cargo], 0);
+
+  let nextAvg;
+  if (body.gbp_avg_rate !== undefined) {
+    nextAvg = UK_deriveAvgRate_(body.gbp_avg_rate, nextProduct, nextCargo);
+  } else if (body.gbp_rate_product !== undefined || body.gbp_rate_cargo !== undefined) {
+    nextAvg = UK_deriveAvgRate_("", nextProduct, nextCargo);
+  } else {
+    nextAvg = UK_roundGBP_(ukNum_(cur[m.gbp_avg_rate], 0));
+  }
+
+  sh.getRange(found.rowIndex, m.gbp_avg_rate + 1).setValue(nextAvg);
+  if (body.gbp_rate_product !== undefined) sh.getRange(found.rowIndex, m.gbp_rate_product + 1).setValue(UK_roundGBP_(nextProduct));
+  if (body.gbp_rate_cargo !== undefined) sh.getRange(found.rowIndex, m.gbp_rate_cargo + 1).setValue(UK_roundGBP_(nextCargo));
   if (body.cargo_cost_per_kg !== undefined) sh.getRange(found.rowIndex, m.cargo_cost_per_kg + 1).setValue(UK_roundGBP_(ukNum_(body.cargo_cost_per_kg, 0)));
 
   const hdr = ukHeaderMap_(sh);
@@ -134,6 +152,17 @@ function UK_handleShipmentUpdate(body) {
 
   sh.getRange(found.rowIndex, m.updated_at + 1).setValue(new Date());
   return { success: true, shipment_id: shipment_id };
+}
+
+function UK_deriveAvgRate_(avgInput, productRate, cargoRate) {
+  const p = ukNum_(productRate, 0);
+  const c = ukNum_(cargoRate, 0);
+  const avgRaw = ukNumOrBlank_(avgInput);
+  if (avgRaw !== "") return UK_roundGBP_(avgRaw);
+  if (p > 0 && c > 0) return UK_roundGBP_((p + c) / 2);
+  if (p > 0) return UK_roundGBP_(p);
+  if (c > 0) return UK_roundGBP_(c);
+  return 0;
 }
 
 function UK_handleShipmentDelete(body) {

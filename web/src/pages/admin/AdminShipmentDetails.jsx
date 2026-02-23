@@ -20,6 +20,28 @@ function fmt0(v) {
   return Math.round(n(v, 0));
 }
 
+function kgToGramInput(v) {
+  const x = Number(v);
+  if (!Number.isFinite(x)) return "";
+  const g = x * 1000;
+  return Number.isInteger(g) ? String(g) : String(Number(g.toFixed(3)));
+}
+
+function gramInputToKg(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  const g = Number(s);
+  return Number.isFinite(g) ? g / 1000 : "";
+}
+
+function toDirectGoogleImageUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  const m = raw.match(/(?:\/d\/|id=)([-\w]{20,})/i);
+  if (m?.[1]) return `https://lh3.googleusercontent.com/d/${m[1]}`;
+  return raw;
+}
+
 function ShipmentSkeleton() {
   return (
     <Card>
@@ -59,6 +81,7 @@ export default function AdminShipmentDetails() {
   const [topMsg, setTopMsg] = useState("");
 
   const [savingCreate, setSavingCreate] = useState(false);
+  const [savingAddOrder, setSavingAddOrder] = useState(false);
   const [savingRow, setSavingRow] = useState({});
   const [rowDraft, setRowDraft] = useState({});
   const [rowErr, setRowErr] = useState({});
@@ -84,6 +107,25 @@ export default function AdminShipmentDetails() {
     setAllocations(nextAlloc);
     setOrders(nextOrders);
 
+    const relatedOrderIds = [...new Set(nextAlloc.map((a) => String(a.order_id || "").trim()).filter(Boolean))];
+    if (relatedOrderIds.length) {
+      const loaded = await Promise.all(
+        relatedOrderIds.map(async (oid) => {
+          try {
+            const res = await UK_API.getOrderItems(user.email, oid);
+            return [oid, Array.isArray(res.items) ? res.items : []];
+          } catch (_) {
+            return [oid, []];
+          }
+        }),
+      );
+      setItemsByOrder((prev) => {
+        const next = { ...prev };
+        for (const [oid, rows] of loaded) next[oid] = rows;
+        return next;
+      });
+    }
+
     setRowDraft((prev) => {
       const next = { ...prev };
       for (const a of nextAlloc) {
@@ -91,8 +133,8 @@ export default function AdminShipmentDetails() {
         next[id] = {
           allocated_qty: String(a.allocated_qty ?? ""),
           shipped_qty: String(a.shipped_qty ?? ""),
-          unit_product_weight: String(a.unit_product_weight ?? ""),
-          unit_package_weight: String(a.unit_package_weight ?? ""),
+          unit_product_weight: kgToGramInput(a.unit_product_weight),
+          unit_package_weight: kgToGramInput(a.unit_package_weight),
         };
       }
       return next;
@@ -141,6 +183,66 @@ export default function AdminShipmentDetails() {
   }, [form.order_id]);
 
   const orderItems = useMemo(() => itemsByOrder[form.order_id] || [], [itemsByOrder, form.order_id]);
+  const itemByOrderItemId = useMemo(() => {
+    const out = {};
+    Object.keys(itemsByOrder).forEach((oid) => {
+      const list = itemsByOrder[oid] || [];
+      list.forEach((it) => {
+        const key = String(it.order_item_id || "").trim();
+        if (!key) return;
+        out[key] = it;
+      });
+    });
+    return out;
+  }, [itemsByOrder]);
+
+  const selectableOrders = useMemo(() => {
+    const list = [...orders];
+    list.sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    return list;
+  }, [orders]);
+
+  const aggregateRows = useMemo(() => {
+    const itemMap = {};
+    Object.keys(itemsByOrder).forEach((oid) => {
+      const list = itemsByOrder[oid] || [];
+      list.forEach((it) => {
+        const key = String(it.order_item_id || "").trim();
+        if (!key) return;
+        itemMap[key] = it;
+      });
+    });
+
+    const agg = {};
+    for (const a of allocations) {
+      const key = String(a.order_item_id || "").trim();
+      if (!key) continue;
+      if (!agg[key]) {
+        const it = itemMap[key] || {};
+        agg[key] = {
+          order_item_id: key,
+          order_id: String(a.order_id || ""),
+          name: it.name || "",
+          image_url: it.image_url || "",
+          product_id: it.product_id || a.product_id || "",
+          ordered_qty: n(it.ordered_quantity, 0),
+          allocated_qty: 0,
+          shipped_qty: 0,
+          allocated_weight: 0,
+          shipped_weight: 0,
+        };
+      }
+      agg[key].allocated_qty += n(a.allocated_qty, 0);
+      agg[key].shipped_qty += n(a.shipped_qty, 0);
+      agg[key].allocated_weight += n(a.allocated_weight, 0);
+      agg[key].shipped_weight += n(a.shipped_weight, 0);
+    }
+
+    return Object.values(agg)
+      .map((r) => ({ ...r, remaining_qty: r.ordered_qty - r.shipped_qty }))
+      .sort((a, b) => String(a.order_item_id).localeCompare(String(b.order_item_id)));
+  }, [allocations, itemsByOrder]);
+
 
   async function createAllocation() {
     if (!form.order_item_id || !form.allocated_qty) return;
@@ -153,8 +255,8 @@ export default function AdminShipmentDetails() {
         order_item_id: form.order_item_id,
         allocated_qty: Number(form.allocated_qty),
         shipped_qty: Number(form.shipped_qty || 0),
-        unit_product_weight: form.unit_product_weight === "" ? "" : Number(form.unit_product_weight),
-        unit_package_weight: form.unit_package_weight === "" ? "" : Number(form.unit_package_weight),
+        unit_product_weight: gramInputToKg(form.unit_product_weight),
+        unit_package_weight: gramInputToKg(form.unit_package_weight),
       });
 
       await loadCore();
@@ -164,6 +266,39 @@ export default function AdminShipmentDetails() {
       setTopMsg(e?.message || "Failed to create allocation");
     } finally {
       setSavingCreate(false);
+    }
+  }
+
+  async function addFullOrderToShipment() {
+    const oid = String(form.order_id || "").trim();
+    if (!oid) return;
+
+    setSavingAddOrder(true);
+    setTopMsg("");
+    try {
+      const sug = await UK_API.allocationSuggestForShipment(user.email, shipmentId, oid);
+      const rows = Array.isArray(sug?.suggestions) ? sug.suggestions : [];
+      if (!rows.length) throw new Error("No remaining quantities to allocate for this order.");
+
+      for (const r of rows) {
+        await UK_API.allocationCreate(user.email, {
+          shipment_id: shipmentId,
+          order_item_id: r.order_item_id,
+          allocated_qty: Number(r.allocated_qty || 0),
+          shipped_qty: Number(r.shipped_qty || 0),
+          unit_product_weight: 0,
+          unit_package_weight: 0,
+        });
+      }
+
+      await UK_API.recomputeShipment(user.email, shipmentId);
+      await UK_API.recomputeOrder(user.email, oid);
+      await loadCore();
+      setTopMsg(`Added ${rows.length} item(s) from order ${oid} to shipment.`);
+    } catch (e) {
+      setTopMsg(e?.message || "Failed to add full order");
+    } finally {
+      setSavingAddOrder(false);
     }
   }
 
@@ -177,8 +312,8 @@ export default function AdminShipmentDetails() {
       await UK_API.allocationUpdate(user.email, id, {
         allocated_qty: d.allocated_qty === "" ? "" : Number(d.allocated_qty),
         shipped_qty: d.shipped_qty === "" ? "" : Number(d.shipped_qty),
-        unit_product_weight: d.unit_product_weight === "" ? "" : Number(d.unit_product_weight),
-        unit_package_weight: d.unit_package_weight === "" ? "" : Number(d.unit_package_weight),
+        unit_product_weight: gramInputToKg(d.unit_product_weight),
+        unit_package_weight: gramInputToKg(d.unit_package_weight),
       });
       await UK_API.recomputeShipment(user.email, shipmentId);
 
@@ -230,7 +365,10 @@ export default function AdminShipmentDetails() {
           <h1 className="text-2xl font-semibold tracking-tight">Shipment Details</h1>
           <p className="text-sm text-muted-foreground">{shipmentId}</p>
         </div>
-        <Button variant="outline" onClick={() => navigate("/admin/orders")}>Orders</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate(`/admin/shipments/${shipmentId}/weights`)}>Weight Sheet</Button>
+          <Button variant="outline" onClick={() => navigate("/admin/orders")}>Orders</Button>
+        </div>
       </div>
 
       {err ? <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{err}</div> : null}
@@ -269,8 +407,10 @@ export default function AdminShipmentDetails() {
                 >
                   <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Select order" /></SelectTrigger>
                   <SelectContent>
-                    {orders.map((o) => (
-                      <SelectItem key={o.order_id} value={o.order_id}>{o.order_id}</SelectItem>
+                    {selectableOrders.map((o, idx) => (
+                      <SelectItem key={o.order_id} value={o.order_id}>
+                        #{o.order_sl || idx + 1} • {o.order_name || "Untitled"} ({o.order_id})
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -305,19 +445,27 @@ export default function AdminShipmentDetails() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Unit Product Wt</label>
+                <label className="mb-1 block text-xs text-muted-foreground">Unit Product Wt (g)</label>
                 <Input value={form.unit_product_weight} onChange={(e) => setForm((p) => ({ ...p, unit_product_weight: e.target.value }))} inputMode="decimal" />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Unit Package Wt</label>
+                <label className="mb-1 block text-xs text-muted-foreground">Unit Package Wt (g)</label>
                 <Input value={form.unit_package_weight} onChange={(e) => setForm((p) => ({ ...p, unit_package_weight: e.target.value }))} inputMode="decimal" />
               </div>
 
               <div className="md:col-span-6">
-                <Button disabled={savingCreate || !form.order_item_id || !form.allocated_qty} onClick={createAllocation}>
-                  {savingCreate ? "Adding..." : "Add Allocation"}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={savingCreate || !form.order_item_id || !form.allocated_qty} onClick={createAllocation}>
+                    {savingCreate ? "Adding..." : "Add Selected Item"}
+                  </Button>
+                  <Button variant="outline" disabled={savingAddOrder || !form.order_id} onClick={addFullOrderToShipment}>
+                    {savingAddOrder ? "Adding Order..." : "Add Full Order"}
+                  </Button>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Add Full Order will create allocation rows for all remaining quantities in this order.
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -325,15 +473,17 @@ export default function AdminShipmentDetails() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Allocations ({allocations.length})</CardTitle>
-              <Button variant="outline" onClick={async () => {
-                await UK_API.recomputeShipment(user.email, shipmentId);
-                const relatedOrderIds = [...new Set(allocations.map((x) => String(x.order_id || "")).filter(Boolean))];
-                await Promise.all(relatedOrderIds.map((oid) => UK_API.recomputeOrder(user.email, oid).catch(() => null)));
-                await loadCore();
-                setTopMsg("Shipment and related orders recomputed.");
-              }}>
-                Recompute Shipment
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={async () => {
+                  await UK_API.recomputeShipment(user.email, shipmentId);
+                  const relatedOrderIds = [...new Set(allocations.map((x) => String(x.order_id || "")).filter(Boolean))];
+                  await Promise.all(relatedOrderIds.map((oid) => UK_API.recomputeOrder(user.email, oid).catch(() => null)));
+                  await loadCore();
+                  setTopMsg("Shipment and related orders recomputed.");
+                }}>
+                  Recompute Shipment
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {allocations.length === 0 ? (
@@ -357,10 +507,22 @@ export default function AdminShipmentDetails() {
                         const id = String(a.allocation_id || "");
                         const d = rowDraft[id] || {};
                         const busy = !!savingRow[id];
+                        const meta = itemByOrderItemId[String(a.order_item_id || "").trim()] || {};
+                        const imgUrl = toDirectGoogleImageUrl(meta.image_url);
                         return (
                           <tr key={id}>
                             <td className="px-3 py-2">{id}</td>
-                            <td className="px-3 py-2">{a.order_id}<br />{a.order_item_id}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                                  {imgUrl ? <img src={imgUrl} alt={meta.name || meta.product_id || "product"} className="h-full w-full object-cover" /> : null}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="truncate font-medium">{meta.name || meta.product_id || "Product"}</div>
+                                  <div className="text-[10px] text-muted-foreground">{a.order_id} • {a.order_item_id}</div>
+                                </div>
+                              </div>
+                            </td>
                             <td className="px-3 py-2"><Input className="h-8 w-24 text-xs" value={d.allocated_qty ?? ""} onChange={(e) => setRowDraft((p) => ({ ...p, [id]: { ...p[id], allocated_qty: e.target.value } }))} /></td>
                             <td className="px-3 py-2"><Input className="h-8 w-24 text-xs" value={d.shipped_qty ?? ""} onChange={(e) => setRowDraft((p) => ({ ...p, [id]: { ...p[id], shipped_qty: e.target.value } }))} /></td>
                             <td className="px-3 py-2">
@@ -383,6 +545,60 @@ export default function AdminShipmentDetails() {
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-base">Shipment Pick List Aggregate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {aggregateRows.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No aggregate rows yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-muted/40 text-muted-foreground">
+                      <tr className="text-left">
+                        <th className="px-3 py-2">Order Item</th>
+                        <th className="px-3 py-2">Product</th>
+                        <th className="px-3 py-2">Ordered</th>
+                        <th className="px-3 py-2">Allocated</th>
+                        <th className="px-3 py-2">Shipped</th>
+                        <th className="px-3 py-2">Remaining</th>
+                        <th className="px-3 py-2">Allocated Wt</th>
+                        <th className="px-3 py-2">Shipped Wt</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {aggregateRows.map((r) => (
+                        <tr key={r.order_item_id}>
+                          <td className="px-3 py-2">{r.order_item_id}<br />{r.order_id}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                                {toDirectGoogleImageUrl(r.image_url) ? (
+                                  <img src={toDirectGoogleImageUrl(r.image_url)} alt={r.name || r.product_id || "product"} className="h-full w-full object-cover" />
+                                ) : null}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="truncate font-medium">{r.name || r.product_id || "-"}</div>
+                                <div className="text-[10px] text-muted-foreground">{r.order_item_id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">{fmt0(r.ordered_qty)}</td>
+                          <td className="px-3 py-2">{fmt0(r.allocated_qty)}</td>
+                          <td className="px-3 py-2">{fmt0(r.shipped_qty)}</td>
+                          <td className="px-3 py-2">{fmt0(r.remaining_qty)}</td>
+                          <td className="px-3 py-2">{n(r.allocated_weight).toFixed(2)}</td>
+                          <td className="px-3 py-2">{n(r.shipped_weight).toFixed(2)}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

@@ -8,12 +8,43 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog";
 
 const CURRENCIES = ["GBP", "BDT"];
 const PROFIT_BASES = ["PRODUCT_ONLY", "PRODUCT_PLUS_CARGO"];
 const CARGO_CHARGES = ["PASS_THROUGH", "INCLUDED_IN_PRICE"];
 const CONVERSION_RULES = ["SEPARATE_RATES", "AVG_RATE"];
 const RATE_SOURCES = ["avg", "product", "cargo"];
+const MODE_EXAMPLES = [
+  {
+    label: "Default 1: GBP Product",
+    values: {
+      name: "GBP Product Profit",
+      version: "v1",
+      currency: "GBP",
+      profit_base: "PRODUCT_ONLY",
+      cargo_charge: "PASS_THROUGH",
+      conversion_rule: "SEPARATE_RATES",
+      rate_source_revenue: "avg",
+      active: "1",
+      notes: "Profit on buy price only. Cargo charged separately.",
+    },
+  },
+  {
+    label: "Default 2: BDT Landed",
+    values: {
+      name: "BDT Landed Profit",
+      version: "v1",
+      currency: "BDT",
+      profit_base: "PRODUCT_PLUS_CARGO",
+      cargo_charge: "INCLUDED_IN_PRICE",
+      conversion_rule: "SEPARATE_RATES",
+      rate_source_revenue: "avg",
+      active: "1",
+      notes: "Profit on product + cargo in BDT.",
+    },
+  },
+];
 
 function defaultForm() {
   return {
@@ -60,13 +91,17 @@ export default function AdminPricingModes() {
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
   const [editingId, setEditingId] = useState("");
   const [form, setForm] = useState(defaultForm());
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState("");
 
   const load = useCallback(async () => {
     if (!email) return;
     setLoading(true);
     setErr("");
+    setNotice("");
     try {
       const res = await UK_API.pricingModeGetAll(email, true);
       setRows(Array.isArray(res.pricing_modes) ? res.pricing_modes : []);
@@ -121,12 +156,18 @@ export default function AdminPricingModes() {
     setForm(defaultForm());
   }
 
+  function applyExample(values) {
+    setEditingId("");
+    setForm({ ...defaultForm(), ...values });
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     if (!email) return;
 
     setSaving(true);
     setErr("");
+    setNotice("");
     try {
       const payload = {
         pricing_mode_id: editingId ? editingId : undefined,
@@ -149,6 +190,7 @@ export default function AdminPricingModes() {
 
       onReset();
       await load();
+      setNotice(editingId ? "Pricing mode updated." : "Pricing mode created.");
     } catch (e2) {
       setErr(e2?.message || "Failed to save pricing mode");
     } finally {
@@ -158,14 +200,38 @@ export default function AdminPricingModes() {
 
   async function onDelete(id) {
     if (!email) return;
-    if (!window.confirm(`Delete pricing mode ${id}?`)) return;
     setSaving(true);
     setErr("");
+    setNotice("");
     try {
       await UK_API.pricingModeDelete(email, id);
       await load();
+      setNotice("Pricing mode deleted.");
     } catch (e) {
       setErr(e?.message || "Failed to delete pricing mode");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openDelete(id) {
+    setDeleteTargetId(String(id || ""));
+    setDeleteOpen(true);
+  }
+
+  async function seedDefaults() {
+    if (!email) return;
+    setSaving(true);
+    setErr("");
+    setNotice("");
+    try {
+      const res = await UK_API.pricingModeSeedDefaults(email);
+      await load();
+      setNotice(
+        `Defaults ready. Created: ${Number(res.created || 0)}, existing kept: ${Number(res.skipped_existing || 0)}.`,
+      );
+    } catch (e) {
+      setErr(e?.message || "Failed to create default pricing modes");
     } finally {
       setSaving(false);
     }
@@ -175,8 +241,15 @@ export default function AdminPricingModes() {
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">Pricing Modes</h1>
-          <p className="text-sm text-muted-foreground">Manage pricing model versions for GBP and BDT flows.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Pricing Modes</h1>
+              <p className="text-sm text-muted-foreground">Manage pricing model versions for GBP and BDT flows.</p>
+            </div>
+            <Button onClick={seedDefaults} disabled={saving}>
+              {saving ? "Working..." : "Create 2 Defaults"}
+            </Button>
+          </div>
         </div>
 
         <Card className="mb-6">
@@ -189,6 +262,16 @@ export default function AdminPricingModes() {
             <p>3. In admin order flow, apply a mode using the Price action.</p>
             <p>4. Delete works only for unused modes. If already used in orders, set `active=0` instead.</p>
             <p>5. `pricing_mode_id` is auto-generated from currency + profit base + version.</p>
+            <div className="pt-2">
+              <div className="mb-2 text-xs font-medium text-foreground">Quick examples (prefill form):</div>
+              <div className="flex flex-wrap gap-2">
+                {MODE_EXAMPLES.map((ex) => (
+                  <Button key={ex.label} type="button" variant="outline" size="sm" onClick={() => applyExample(ex.values)}>
+                    {ex.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -327,6 +410,11 @@ export default function AdminPricingModes() {
                   {err}
                 </div>
               ) : null}
+              {notice ? (
+                <div className="mb-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  {notice}
+                </div>
+              ) : null}
 
               {loading ? (
                 <PricingModesSkeleton />
@@ -351,7 +439,7 @@ export default function AdminPricingModes() {
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button variant="outline" onClick={() => onEdit(r)} disabled={saving}>Edit</Button>
-                        <Button variant="destructive" onClick={() => onDelete(r.pricing_mode_id)} disabled={saving}>
+                        <Button variant="destructive" onClick={() => openDelete(r.pricing_mode_id)} disabled={saving}>
                           Delete
                         </Button>
                       </div>
@@ -363,6 +451,22 @@ export default function AdminPricingModes() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={deleteOpen}
+        loading={saving}
+        title="Delete pricing mode"
+        description={
+          deleteTargetId
+            ? `Delete pricing mode "${deleteTargetId}"?`
+            : "Delete this pricing mode?"
+        }
+        confirmText="Delete"
+        onClose={() => {
+          if (!saving) setDeleteOpen(false);
+        }}
+        onConfirm={() => onDelete(deleteTargetId)}
+      />
     </div>
   );
 }

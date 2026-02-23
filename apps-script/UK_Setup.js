@@ -20,8 +20,8 @@ function UK_setupSheets_() {
       "image_url", "price_gbp", "case_size", "quantity", "created_at", "updated_at"
     ],
     uk_orders: [
-      "order_id", "order_name", "creator_email", "creator_name", "creator_role", "creator_can_see_price_gbp",
-      "status", "created_at", "updated_at",
+      "order_id", "order_sl", "order_name", "creator_email", "creator_name", "creator_role", "creator_can_see_price_gbp",
+      "status", "counter_enabled", "created_at", "updated_at",
       "total_order_qty", "total_allocated_qty", "total_shipped_qty", "total_remaining_qty",
       "total_revenue_bdt", "total_product_cost_bdt", "total_cargo_cost_bdt", "total_total_cost_bdt", "total_profit_bdt"
     ],

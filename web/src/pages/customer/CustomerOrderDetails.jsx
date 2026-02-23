@@ -111,7 +111,8 @@ export default function CustomerOrderDetails() {
   }, [user?.email, orderId]);
 
   const status = String(order?.status || "").toLowerCase();
-  const canCounter = status === "priced" || status === "under_review";
+  const counterEnabled = order?.counter_enabled !== false;
+  const canCounter = (status === "priced" || status === "under_review") && counterEnabled;
   const canAccept = status === "priced";
 
   async function saveCounterUnit(item) {
@@ -223,6 +224,7 @@ export default function CustomerOrderDetails() {
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
             Qty {n0(order.total_order_qty)} • Shipped {n0(order.total_shipped_qty)} • Remaining {n0(order.total_remaining_qty)} • Total Cost (BDT) {n0(order.total_total_cost_bdt)}
+            <div className="mt-1">Counter offer: <span className="font-medium text-foreground">{counterEnabled ? "Enabled" : "Disabled by admin"}</span></div>
           </CardContent>
         </Card>
       ) : null}
@@ -243,6 +245,11 @@ export default function CustomerOrderDetails() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            {!counterEnabled ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Counter offer is currently turned off by admin. You can still accept the offer when available.
+              </div>
+            ) : null}
             {items.length === 0 ? (
               <div className="text-sm text-muted-foreground">No items.</div>
             ) : (
@@ -252,16 +259,33 @@ export default function CustomerOrderDetails() {
                 const offered = modeGBP ? it.offered_unit_gbp : it.offered_unit_bdt;
                 const customer = modeGBP ? it.customer_unit_gbp : it.customer_unit_bdt;
                 const finalUnit = modeGBP ? it.final_unit_gbp : it.final_unit_bdt;
+                const showFinalPrice =
+                  status === "finalized" ||
+                  status === "processing" ||
+                  status === "partially_delivered" ||
+                  status === "delivered";
+                const shownUnit = showFinalPrice ? finalUnit : offered;
+                const shownLabel = showFinalPrice ? "Final unit (mode)" : "Offered unit (mode)";
 
                 return (
                   <div key={itemId} className="rounded-lg border p-3">
                     <div className="text-sm font-semibold">{it.name || "Unnamed item"}</div>
                     <div className="text-xs text-muted-foreground">{itemId} • mode {it.pricing_mode_id || "-"} • qty {n0(it.ordered_quantity)}</div>
 
-                    <div className="mt-3 grid gap-2 md:grid-cols-4">
+                    <div className="mt-3 grid gap-2 md:grid-cols-5">
                       <div className="rounded-lg border p-2 text-xs">
-                        <div className="text-muted-foreground">Offered unit</div>
-                        <div className="font-semibold">{offered ?? "-"}</div>
+                        <div className="text-muted-foreground">Offered GBP</div>
+                        <div className="font-semibold">{it.offered_unit_gbp ?? "-"}</div>
+                      </div>
+
+                      <div className="rounded-lg border p-2 text-xs">
+                        <div className="text-muted-foreground">Offered BDT</div>
+                        <div className="font-semibold">{it.offered_unit_bdt ?? "-"}</div>
+                      </div>
+
+                      <div className="rounded-lg border p-2 text-xs">
+                        <div className="text-muted-foreground">{shownLabel}</div>
+                        <div className="font-semibold">{shownUnit ?? "-"}</div>
                       </div>
 
                       <div className="rounded-lg border p-2 text-xs">

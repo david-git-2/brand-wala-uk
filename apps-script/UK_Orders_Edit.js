@@ -8,7 +8,9 @@ function UK_handleUpdateOrder(body) {
 
   if (!order_id) throw new Error("order_id is required");
   if (!patch || typeof patch !== "object") throw new Error("patch object is required");
-  if (patch.order_name === undefined) throw new Error("Only patch.order_name is supported in uk_update_order");
+  if (patch.order_name === undefined && patch.counter_enabled === undefined) {
+    throw new Error("Supported fields: patch.order_name, patch.counter_enabled");
+  }
 
   const sh = ukGetSheet_("uk_orders");
   const m = UK_getMapStrict_(sh, ["order_id", "order_name", "creator_email", "status", "updated_at"]);
@@ -26,7 +28,15 @@ function UK_handleUpdateOrder(body) {
     UK_assertNotDelivered_(status);
   }
 
-  sh.getRange(found.rowIndex, m.order_name + 1).setValue(String(patch.order_name || "").trim());
+  const headers = ukHeaderMap_(sh);
+  if (patch.order_name !== undefined) {
+    sh.getRange(found.rowIndex, m.order_name + 1).setValue(String(patch.order_name || "").trim());
+  }
+  if (patch.counter_enabled !== undefined) {
+    if (!ukIsAdmin_(user)) throw new Error("Admin only: patch.counter_enabled");
+    if (headers.counter_enabled == null) throw new Error("Missing column: counter_enabled");
+    sh.getRange(found.rowIndex, headers.counter_enabled + 1).setValue(ukBool01_(patch.counter_enabled));
+  }
   sh.getRange(found.rowIndex, m.updated_at + 1).setValue(new Date());
 
   return { success: true, order_id: order_id };
@@ -176,14 +186,14 @@ function UK_handleDeleteOrder(body) {
   const shOrders = ukGetSheet_("uk_orders");
   const shItems = ukGetSheet_("uk_order_items");
 
-  const mO = UK_getMapStrict_(shOrders, ["order_id", "status"]);
+  const mO = UK_getMapStrict_(shOrders, ["order_id", "status", "order_name"]);
   const of = ukFindRowIndexById_(shOrders, mO.order_id, order_id);
   if (of.rowIndex < 0) throw new Error("Order not found: " + order_id);
 
   const status = String(of.row[mO.status] || "").toLowerCase();
-  UK_assertNotDelivered_(status);
-  if (status === "processing" || status === "partially_delivered") {
-    throw new Error("Cannot delete order in status: " + status);
+  // Permanent delete is allowed only when order is finalized lifecycle end.
+  if (status !== "delivered" && status !== "cancelled") {
+    throw new Error("Permanent delete allowed only for delivered/cancelled orders");
   }
 
   const mI = UK_getMapStrict_(shItems, ["order_item_id", "order_id"]);
@@ -195,6 +205,17 @@ function UK_handleDeleteOrder(body) {
     for (let i = del.length - 1; i >= 0; i--) shItems.deleteRow(del[i]);
   }
 
+  // Cascade delete allocations linked to this order
+  const shAlloc = ukGetSheet_("uk_shipment_allocation");
+  const mA = UK_getMapStrict_(shAlloc, ["allocation_id", "order_id"]);
+  const lastRowA = shAlloc.getLastRow();
+  if (lastRowA >= 2) {
+    const dataA = shAlloc.getRange(2, 1, lastRowA - 1, shAlloc.getLastColumn()).getValues();
+    const delA = [];
+    for (let i = 0; i < dataA.length; i++) if (String(dataA[i][mA.order_id]) === order_id) delA.push(i + 2);
+    for (let i = delA.length - 1; i >= 0; i--) shAlloc.deleteRow(delA[i]);
+  }
+
   shOrders.deleteRow(of.rowIndex);
-  return { success: true, order_id: order_id };
+  return { success: true, order_id: order_id, deleted_status: status };
 }

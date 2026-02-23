@@ -4,6 +4,11 @@
 This project keeps Google Apps Script code **in the repo** (GitHub) and deploys to Apps Script using **clasp**.
 This prevents code getting “scrambled” in Drive and gives you proper version control + repeatable deployments.
 
+## Backend Logic Doc
+
+- Full backend behavior + calculation formulas:
+  - `/Users/david/Desktop/projects/brand-wala-uk/apps-script/BACKEND_SYSTEM.md`
+
 > Script type: **Standalone Apps Script project**  
 > Data store: **Google Sheets** (the script accesses one or more sheets by ID)
 

@@ -89,6 +89,7 @@ function doPost(e) {
     if (action === "uk_pricing_mode_create") return _ret(UK_handlePricingModeCreate(body));
     if (action === "uk_pricing_mode_update") return _ret(UK_handlePricingModeUpdate(body));
     if (action === "uk_pricing_mode_delete") return _ret(UK_handlePricingModeDelete(body)); // or deactivate
+    if (action === "uk_pricing_mode_seed_defaults") return _ret(UK_handlePricingModeSeedDefaults(body));
 
     // ----------------------------
     // Users CRUD (ADMIN ONLY)

@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function UsersSkeleton({ rows = 6 }) {
   return (
@@ -41,6 +49,11 @@ export default function AdminUsers() {
   const [q, setQ] = useState("");
   const [users, setUsers] = useState([]);
   const [error, setError] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTargetEmail, setDeleteTargetEmail] = useState("");
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [nameTargetEmail, setNameTargetEmail] = useState("");
+  const [nameDraft, setNameDraft] = useState("");
 
   const [createForm, setCreateForm] = useState({
     user_email: "",
@@ -126,7 +139,6 @@ export default function AdminUsers() {
 
   async function handleDelete(user_email) {
     if (!email) return;
-    if (!window.confirm(`Delete user ${user_email}?`)) return;
 
     setSaving(true);
     setError("");
@@ -138,6 +150,23 @@ export default function AdminUsers() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function openDelete(emailToDelete) {
+    setDeleteTargetEmail(String(emailToDelete || ""));
+    setDeleteOpen(true);
+  }
+
+  function openEditName(targetEmail, currentName) {
+    setNameTargetEmail(String(targetEmail || ""));
+    setNameDraft(String(currentName || ""));
+    setNameDialogOpen(true);
+  }
+
+  async function confirmEditName() {
+    if (!nameTargetEmail) return;
+    await handleUpdate(nameTargetEmail, { name: nameDraft });
+    if (!saving) setNameDialogOpen(false);
   }
 
   return (
@@ -299,11 +328,7 @@ export default function AdminUsers() {
                         <Button
                           variant="outline"
                           disabled={saving}
-                          onClick={() => {
-                            const name = window.prompt("Update name", u.name || "");
-                            if (name === null) return;
-                            handleUpdate(u.email, { name });
-                          }}
+                          onClick={() => openEditName(u.email, u.name)}
                         >
                           Edit Name
                         </Button>
@@ -311,7 +336,7 @@ export default function AdminUsers() {
                         <Button
                           variant="destructive"
                           disabled={saving}
-                          onClick={() => handleDelete(u.email)}
+                          onClick={() => openDelete(u.email)}
                         >
                           Delete
                         </Button>
@@ -324,6 +349,54 @@ export default function AdminUsers() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDeleteDialog
+        open={deleteOpen}
+        loading={saving}
+        title="Delete user"
+        description={
+          deleteTargetEmail
+            ? `Delete user "${deleteTargetEmail}"?`
+            : "Delete this user?"
+        }
+        confirmText="Delete"
+        onClose={() => {
+          if (!saving) setDeleteOpen(false);
+        }}
+        onConfirm={() => handleDelete(deleteTargetEmail)}
+      />
+
+      <Dialog
+        open={nameDialogOpen}
+        onOpenChange={(next) => {
+          if (!saving) setNameDialogOpen(next);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit user name</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <div className="text-xs text-muted-foreground">{nameTargetEmail}</div>
+            <Input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              placeholder="Full name"
+              disabled={saving}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNameDialogOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={confirmEditName} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

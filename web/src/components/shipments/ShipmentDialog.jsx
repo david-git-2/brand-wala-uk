@@ -16,6 +16,13 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function maybeNum(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return undefined;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export default function ShipmentDialog({
   open,
   mode = "create",
@@ -78,7 +85,11 @@ export default function ShipmentDialog({
                 inputMode="decimal"
                 disabled={loading}
                 autoComplete="off"
+                placeholder="Optional (auto-derived)"
               />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Leave empty to auto-calculate: one rate uses that value, two rates use their average.
+              </p>
             </div>
 
             <div>
@@ -130,9 +141,9 @@ export default function ShipmentDialog({
             onClick={() =>
               onSubmit?.({
                 name: String(form.name || "").trim(),
-                gbp_avg_rate: num(form.gbp_avg_rate),
-                gbp_rate_product: num(form.gbp_rate_product),
-                gbp_rate_cargo: num(form.gbp_rate_cargo),
+                gbp_avg_rate: maybeNum(form.gbp_avg_rate),
+                gbp_rate_product: maybeNum(form.gbp_rate_product),
+                gbp_rate_cargo: maybeNum(form.gbp_rate_cargo),
                 cargo_cost_per_kg: num(form.cargo_cost_per_kg),
               })
             }

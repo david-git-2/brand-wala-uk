@@ -211,6 +211,12 @@ export default function AdminShipments() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
                           {s.status ? <Badge variant="secondary">{s.status}</Badge> : null}
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/shipments/${s.shipment_id}`)}>
+                            View
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/shipments/${s.shipment_id}/weights`)}>
+                            Weights
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => openEdit(s)}>
                             Edit
                           </Button>

@@ -148,11 +148,11 @@ export const UK_API = {
   allocationGetForOrder: (email, order_id) =>
     post("uk_allocation_get_for_order", { email, order_id }),
 
-  allocationSuggestForShipment: (email, shipment_id, order_ids = undefined) =>
+  allocationSuggestForShipment: (email, shipment_id, order_id = undefined) =>
     postLegacy("uk_allocation_suggest_for_shipment", {
       email,
       shipment_id,
-      ...(Array.isArray(order_ids) ? { order_ids } : {}),
+      ...(order_id ? { order_id } : {}),
     }),
 
   // ============================
@@ -164,13 +164,22 @@ export const UK_API = {
   // ============================
   // pricing modes (ADMIN ONLY)
   // ============================
-  pricingModeGetAll: (email, include_inactive = false) =>
-    post("uk_pricing_mode_get_all", { email, include_inactive }),
+  pricingModeGetAll: async (email, include_inactive = false) => {
+    const res = await post("uk_pricing_mode_get_all", { email, include_inactive });
+    const list = Array.isArray(res?.pricing_modes)
+      ? res.pricing_modes
+      : Array.isArray(res?.modes)
+        ? res.modes
+        : [];
+    return { ...res, pricing_modes: list, modes: list };
+  },
   pricingModeCreate: (email, payload) => post("uk_pricing_mode_create", { email, ...payload }),
   pricingModeUpdate: (email, pricing_mode_id, patch = {}) =>
     post("uk_pricing_mode_update", { email, pricing_mode_id, ...patch }),
   pricingModeDelete: (email, pricing_mode_id) =>
     post("uk_pricing_mode_delete", { email, pricing_mode_id }),
+  pricingModeSeedDefaults: (email) =>
+    post("uk_pricing_mode_seed_defaults", { email }),
 
   // ============================
   // users (ADMIN ONLY)
