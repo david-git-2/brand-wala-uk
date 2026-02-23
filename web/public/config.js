@@ -1,4 +1,12 @@
 window.BW_CONFIG = {
   API_URL: "https://script.google.com/macros/s/AKfycbzN161iA01iTCi11_YcDQcJGWibX0ZzjGWfSibth9Vap4rueyewxwMIdhcEw3CDrlhI/exec",
-  GOOGLE_CLIENT_ID: "474725112072-322hhg22frm9bus0d99f81lpdnm533ba.apps.googleusercontent.com"
+  FIREBASE: {
+    apiKey: "AIzaSyDFFNHcZh7tome2FWfOeGAWd6fdyxLYBK8",
+    authDomain: "brandwala-wholesale.firebaseapp.com",
+    projectId: "brandwala-wholesale",
+    storageBucket: "brandwala-wholesale.firebasestorage.app",
+    messagingSenderId: "355661426123",
+    appId: "1:355661426123:web:a9aff3f34aa22882ef1a4e",
+    USE_EMULATOR: false
+  }
 };

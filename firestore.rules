@@ -1,0 +1,36 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasEmail() {
+      return signedIn() && request.auth.token.email is string;
+    }
+
+    function myEmailLower() {
+      return hasEmail() ? request.auth.token.email.lower() : "";
+    }
+
+    function isAdmin() {
+      return hasEmail() &&
+        exists(/databases/$(database)/documents/users/$(myEmailLower())) &&
+        get(/databases/$(database)/documents/users/$(myEmailLower())).data.role == "admin" &&
+        get(/databases/$(database)/documents/users/$(myEmailLower())).data.active == 1;
+    }
+
+    match /users/{userEmail} {
+      // Allow signed-in users to fetch a single user document.
+      // Listing remains admin-only.
+      allow get: if signedIn();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

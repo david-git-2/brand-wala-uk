@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { UK_API } from "@/api/ukApi";
 import { useAuth } from "@/auth/AuthProvider";
-
+import { createUser, listUsers, removeUser, updateUser } from "@/firebase/users";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,13 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 function UsersSkeleton({ rows = 6 }) {
   return (
@@ -42,7 +34,7 @@ function UsersSkeleton({ rows = 6 }) {
 
 export default function AdminUsers() {
   const { user } = useAuth();
-  const email = user?.email || "";
+  const currentEmail = String(user?.email || "").toLowerCase();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,9 +43,6 @@ export default function AdminUsers() {
   const [error, setError] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTargetEmail, setDeleteTargetEmail] = useState("");
-  const [nameDialogOpen, setNameDialogOpen] = useState(false);
-  const [nameTargetEmail, setNameTargetEmail] = useState("");
-  const [nameDraft, setNameDraft] = useState("");
 
   const [createForm, setCreateForm] = useState({
     user_email: "",
@@ -64,18 +53,17 @@ export default function AdminUsers() {
   });
 
   const loadUsers = useCallback(async () => {
-    if (!email) return;
     setLoading(true);
     setError("");
     try {
-      const res = await UK_API.userGetAll(email);
-      setUsers(Array.isArray(res.users) ? res.users : []);
+      const items = await listUsers();
+      setUsers(items);
     } catch (e) {
       setError(e?.message || "Failed to load users");
     } finally {
       setLoading(false);
     }
-  }, [email]);
+  }, []);
 
   useEffect(() => {
     loadUsers();
@@ -94,14 +82,12 @@ export default function AdminUsers() {
 
   async function handleCreate(e) {
     e.preventDefault();
-    if (!email) return;
-
     setSaving(true);
     setError("");
     try {
-      await UK_API.userCreate(email, {
-        user_email: createForm.user_email.trim(),
-        name: createForm.name.trim(),
+      await createUser({
+        user_email: createForm.user_email,
+        name: createForm.name,
         role: createForm.role,
         active: Number(createForm.active),
         can_see_price_gbp: Number(createForm.can_see_price_gbp),
@@ -114,7 +100,6 @@ export default function AdminUsers() {
         active: "1",
         can_see_price_gbp: "0",
       });
-
       await loadUsers();
     } catch (e2) {
       setError(e2?.message || "Failed to create user");
@@ -123,12 +108,11 @@ export default function AdminUsers() {
     }
   }
 
-  async function handleUpdate(user_email, patch) {
-    if (!email) return;
+  async function handleUpdate(userEmail, patch) {
     setSaving(true);
     setError("");
     try {
-      await UK_API.userUpdate(email, { user_email, ...patch });
+      await updateUser(userEmail, patch);
       await loadUsers();
     } catch (e) {
       setError(e?.message || "Failed to update user");
@@ -137,13 +121,11 @@ export default function AdminUsers() {
     }
   }
 
-  async function handleDelete(user_email) {
-    if (!email) return;
-
+  async function handleDelete(userEmail) {
     setSaving(true);
     setError("");
     try {
-      await UK_API.userDelete(email, user_email);
+      await removeUser(userEmail);
       await loadUsers();
     } catch (e) {
       setError(e?.message || "Failed to delete user");
@@ -157,24 +139,12 @@ export default function AdminUsers() {
     setDeleteOpen(true);
   }
 
-  function openEditName(targetEmail, currentName) {
-    setNameTargetEmail(String(targetEmail || ""));
-    setNameDraft(String(currentName || ""));
-    setNameDialogOpen(true);
-  }
-
-  async function confirmEditName() {
-    if (!nameTargetEmail) return;
-    await handleUpdate(nameTargetEmail, { name: nameDraft });
-    if (!saving) setNameDialogOpen(false);
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Admin Users</h1>
-          <p className="text-sm text-muted-foreground">Create, update status, and manage roles.</p>
+          <p className="text-sm text-muted-foreground">Firebase users CRUD (Firestore `users` collection).</p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -272,77 +242,84 @@ export default function AdminUsers() {
                 <div className="text-sm text-muted-foreground">No users found.</div>
               ) : (
                 <div className="space-y-2">
-                  {filtered.map((u) => (
-                    <div key={u.email} className="rounded-xl border p-3">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <div className="font-medium">{u.email}</div>
-                          <div className="text-sm text-muted-foreground">{u.name || "—"}</div>
+                  {filtered.map((u) => {
+                    const isSelf = String(u.email || "").toLowerCase() === currentEmail;
+                    return (
+                      <div key={u.email} className="rounded-xl border p-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <div className="font-medium">{u.email}</div>
+                            <div className="text-sm text-muted-foreground">{u.name || "—"}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">{u.role}</Badge>
+                            <Badge variant={Number(u.active) === 1 ? "default" : "outline"}>
+                              active:{Number(u.active) === 1 ? "1" : "0"}
+                            </Badge>
+                            <Badge variant="outline">pound price:{Number(u.can_see_price_gbp) === 1 ? "1" : "0"}</Badge>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{u.role}</Badge>
-                          <Badge variant={Number(u.active) === 1 ? "default" : "outline"}>
-                            active:{Number(u.active) === 1 ? "1" : "0"}
-                          </Badge>
-                          <Badge variant="outline">pound price:{Number(u.can_see_price_gbp) === 1 ? "1" : "0"}</Badge>
+
+                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
+                          <Select
+                            value={String(u.role || "customer")}
+                            onValueChange={(v) => handleUpdate(u.email, { role: v })}
+                            disabled={saving || isSelf}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="customer">customer</SelectItem>
+                              <SelectItem value="admin">admin</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Select
+                            value={String(Number(u.active) === 1 ? "1" : "0")}
+                            onValueChange={(v) => handleUpdate(u.email, { active: Number(v) })}
+                            disabled={saving || isSelf}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">active=1</SelectItem>
+                              <SelectItem value="0">active=0</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Select
+                            value={String(Number(u.can_see_price_gbp) === 1 ? "1" : "0")}
+                            onValueChange={(v) => handleUpdate(u.email, { can_see_price_gbp: Number(v) })}
+                            disabled={saving}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">price=1</SelectItem>
+                              <SelectItem value="0">price=0</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Input
+                            defaultValue={u.name || ""}
+                            onBlur={(e) => {
+                              const next = String(e.target.value || "").trim();
+                              if (next !== String(u.name || "").trim()) {
+                                handleUpdate(u.email, { name: next });
+                              }
+                            }}
+                            disabled={saving}
+                            placeholder="Name"
+                          />
+
+                          <Button
+                            variant="destructive"
+                            onClick={() => openDelete(u.email)}
+                            disabled={saving || isSelf}
+                          >
+                            Delete
+                          </Button>
                         </div>
                       </div>
-
-                      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
-                        <Select
-                          value={String(u.role || "customer")}
-                          onValueChange={(v) => handleUpdate(u.email, { role: v })}
-                          disabled={saving}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="customer">customer</SelectItem>
-                            <SelectItem value="admin">admin</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        <Select
-                          value={String(Number(u.active) === 1 ? "1" : "0")}
-                          onValueChange={(v) => handleUpdate(u.email, { active: Number(v) })}
-                          disabled={saving}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">active=1</SelectItem>
-                            <SelectItem value="0">active=0</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        <Select
-                          value={String(Number(u.can_see_price_gbp) === 1 ? "1" : "0")}
-                          onValueChange={(v) => handleUpdate(u.email, { can_see_price_gbp: Number(v) })}
-                          disabled={saving}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">can see pound=1</SelectItem>
-                            <SelectItem value="0">can see pound=0</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        <Button
-                          variant="outline"
-                          disabled={saving}
-                          onClick={() => openEditName(u.email, u.name)}
-                        >
-                          Edit Name
-                        </Button>
-
-                        <Button
-                          variant="destructive"
-                          disabled={saving}
-                          onClick={() => openDelete(u.email)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -352,51 +329,16 @@ export default function AdminUsers() {
 
       <ConfirmDeleteDialog
         open={deleteOpen}
-        loading={saving}
-        title="Delete user"
-        description={
-          deleteTargetEmail
-            ? `Delete user "${deleteTargetEmail}"?`
-            : "Delete this user?"
-        }
+        onClose={() => setDeleteOpen(false)}
+        title="Delete user?"
+        description={`This will permanently delete ${deleteTargetEmail}.`}
         confirmText="Delete"
-        onClose={() => {
-          if (!saving) setDeleteOpen(false);
+        loading={saving}
+        onConfirm={async () => {
+          await handleDelete(deleteTargetEmail);
+          setDeleteOpen(false);
         }}
-        onConfirm={() => handleDelete(deleteTargetEmail)}
       />
-
-      <Dialog
-        open={nameDialogOpen}
-        onOpenChange={(next) => {
-          if (!saving) setNameDialogOpen(next);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit user name</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-2">
-            <div className="text-xs text-muted-foreground">{nameTargetEmail}</div>
-            <Input
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              placeholder="Full name"
-              disabled={saving}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNameDialogOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={confirmEditName} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

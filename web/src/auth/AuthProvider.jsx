@@ -1,113 +1,92 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { UK_API } from "../api/ukApi";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { firebaseAuth } from "@/firebase/client";
+import { getUserProfileByEmail } from "@/firebase/users";
 
 const AuthCtx = createContext(null);
 
-function getCachedUser() {
-  try {
-    const raw = localStorage.getItem("bw_user");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function setCachedUser(u) {
-  try {
-    if (!u) localStorage.removeItem("bw_user");
-    else localStorage.setItem("bw_user", JSON.stringify(u));
-  } catch {}
-}
-
-function redirectToLogin() {
-  // If you use HashRouter
-  if (!window.location.hash.startsWith("#/login")) {
-    window.location.hash = "#/login";
-  }
-}
-
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => getCachedUser());
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ prevents double-run (StrictMode) + dedupes calls
-  const startedRef = useRef(false);
-  const inflightRef = useRef(null);
-
-  const refreshAccess = async ({ redirectOnFail = true } = {}) => {
-    const cached = getCachedUser();
-    const email = String(cached?.email || "").trim();
-
+  async function hydrateFromFirebaseAuth(firebaseUser, { forceSignOut = true } = {}) {
+    const email = String(firebaseUser?.email || "").trim().toLowerCase();
     if (!email) {
-      setCachedUser(null);
+      if (forceSignOut) await signOut(firebaseAuth);
+      return null;
+    }
+
+    // Ensure an up-to-date auth token is available before Firestore read.
+    await firebaseUser.getIdToken();
+
+    const profile = await getUserProfileByEmail(email);
+    if (!profile || Number(profile.active) !== 1) {
+      if (forceSignOut) await signOut(firebaseAuth);
+      return null;
+    }
+
+    return {
+      uid: firebaseUser.uid,
+      email: profile.email,
+      name: profile.name || firebaseUser.displayName || "",
+      role: profile.role,
+      is_admin: profile.role === "admin",
+      can_see_price_gbp: Number(profile.can_see_price_gbp) === 1,
+      active: true,
+    };
+  }
+
+  async function refreshAccess() {
+    const current = firebaseAuth.currentUser;
+    if (!current) {
       setUser(null);
-      if (redirectOnFail) redirectToLogin();
       return { ok: false };
     }
 
-    // ✅ dedupe: if already checking, return the same promise
-    if (inflightRef.current) return inflightRef.current;
+    try {
+      const next = await hydrateFromFirebaseAuth(current, { forceSignOut: false });
+      setUser(next);
+      if (!next) return { ok: false, reason: "profile_not_found_or_inactive" };
+      return { ok: true, user: next };
+    } catch (err) {
+      console.error("refreshAccess failed", err);
+      setUser(null);
+      return {
+        ok: false,
+        reason: String(err?.code || err?.message || "unknown_error"),
+      };
+    }
+  }
 
-    inflightRef.current = (async () => {
-      try {
-        const data = await UK_API.checkAccess(email);
-
-        const next = {
-          ...cached,
-          email: String(data.email || email).trim(),
-          role: String(data.role || "customer").toLowerCase().trim(),
-          is_admin: !!data.is_admin,
-          can_see_price_gbp: !!data.can_see_price_gbp,
-          active: true
-        };
-
-        setCachedUser(next);
-        setUser(next);
-        return { ok: true, user: next };
-      } catch (err) {
-        console.warn("uk_check_access failed:", err);
-        setCachedUser(null);
-        setUser(null);
-        if (redirectOnFail) redirectToLogin();
-        return { ok: false };
-      } finally {
-        inflightRef.current = null;
-      }
-    })();
-
-    return inflightRef.current;
-  };
-
-  // ✅ run once on app mount
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-
-    (async () => {
+    const unsub = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+      setLoading(true);
       try {
-        const cached = getCachedUser();
-        if (!cached?.email) {
-          setLoading(false);
-          redirectToLogin();
+        if (!firebaseUser) {
+          setUser(null);
           return;
         }
-        await refreshAccess({ redirectOnFail: true });
+        const next = await hydrateFromFirebaseAuth(firebaseUser);
+        setUser(next);
+      } catch (err) {
+        console.error("Auth state hydration failed", err);
+        setUser(null);
       } finally {
         setLoading(false);
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    });
+
+    return () => unsub();
   }, []);
 
-  const logout = () => {
-    setCachedUser(null);
+  async function logout() {
+    await signOut(firebaseAuth);
     setUser(null);
-    redirectToLogin();
-  };
+  }
 
   const value = useMemo(
     () => ({ user, setUser, loading, logout, refreshAccess }),
-    [user, loading]
+    [user, loading],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
