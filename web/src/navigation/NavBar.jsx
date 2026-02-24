@@ -30,10 +30,31 @@ import {
 } from "@/components/ui/sheet";
 
 // icons
-import { Menu, User, LogOut } from "lucide-react";
+import {
+  Menu,
+  LogOut,
+  ChevronDown,
+  Boxes,
+  ShoppingCart,
+  ClipboardList,
+  Truck,
+  Users,
+  Info,
+} from "lucide-react";
 
 function cx(...parts) {
   return parts.filter(Boolean).join(" ");
+}
+
+function navIcon(label) {
+  const l = String(label || "").toLowerCase();
+  if (l.includes("product")) return Boxes;
+  if (l.includes("cart")) return ShoppingCart;
+  if (l.includes("order")) return ClipboardList;
+  if (l.includes("shipment")) return Truck;
+  if (l.includes("user")) return Users;
+  if (l.includes("about")) return Info;
+  return ClipboardList;
 }
 
 export default function NavBar() {
@@ -70,31 +91,40 @@ export default function NavBar() {
   return (
     <div className="sticky top-0 z-50">
       <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6">
-        <nav className="rounded-2xl border border-border bg-background/80 shadow-sm backdrop-blur-md">
+        <nav className="rounded-2xl border border-border/70 bg-card/95 shadow-lg backdrop-blur-xl">
           <div className="flex items-center justify-between px-4 py-3 sm:px-5">
             {/* Left: Brand */}
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-primary px-3 py-1.5 text-sm font-extrabold tracking-tight text-primary-foreground">
-                {config?.brand || "BW"}
+              <div className="rounded-xl border border-border bg-muted px-3 py-2">
+                <div className="text-sm font-extrabold tracking-tight text-foreground">
+                  {config?.brand || "BW"}
+                </div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Wholesale
+                </div>
               </div>
             </div>
 
             {/* Middle: Desktop links */}
             <div className="hidden flex-1 items-center justify-center md:flex">
-              <div className="flex items-center gap-2 rounded-full bg-muted p-1 ring-1 ring-border">
+              <div className="flex items-center gap-1 rounded-2xl border border-border bg-muted/70 p-1">
                 {links.map((link) => (
                   <NavLink
                     key={link.to}
                     to={link.to}
                     className={({ isActive }) =>
                       cx(
-                        "rounded-full px-4 py-2 text-sm font-semibold transition",
+                        "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition",
                         isActive
                           ? "bg-background text-foreground shadow-sm ring-1 ring-border"
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/70",
+                          : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
                       )
                     }
                   >
+                    {(() => {
+                      const Icon = navIcon(link.label);
+                      return <Icon className="h-4 w-4" />;
+                    })()}
                     {link.label}
                   </NavLink>
                 ))}
@@ -106,11 +136,12 @@ export default function NavBar() {
               {/* Account dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" className="rounded-xl">
+                  <Button variant="outline" className="h-10 rounded-xl gap-2 px-2.5">
                     <Avatar className="h-6 w-6">
                       <AvatarImage src={photoUrl} alt={name || email || "User"} referrerPolicy="no-referrer" />
                       <AvatarFallback className="text-[10px]">{fallbackText}</AvatarFallback>
                     </Avatar>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
 
@@ -174,8 +205,10 @@ export default function NavBar() {
                   <SheetHeader className="border-b border-border px-4 py-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="rounded-xl bg-primary px-3 py-1.5 text-sm font-extrabold tracking-tight text-primary-foreground">
-                          {config?.brand || "BW"}
+                        <div className="rounded-xl border border-border bg-muted px-3 py-2">
+                          <div className="text-sm font-extrabold tracking-tight text-foreground">
+                            {config?.brand || "BW"}
+                          </div>
                         </div>
                         <SheetTitle className="text-sm font-semibold text-foreground">
                           Menu
@@ -193,13 +226,17 @@ export default function NavBar() {
                             to={link.to}
                             className={({ isActive }) =>
                               cx(
-                                "block rounded-2xl px-4 py-3 text-sm font-semibold transition",
+                                "flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition",
                                 isActive
                                   ? "bg-primary text-primary-foreground"
                                   : "bg-muted text-foreground hover:bg-muted/80",
                               )
                             }
                           >
+                            {(() => {
+                              const Icon = navIcon(link.label);
+                              return <Icon className="h-4 w-4" />;
+                            })()}
                             {link.label}
                           </NavLink>
                         ))}
