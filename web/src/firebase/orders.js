@@ -13,6 +13,31 @@ import {
 } from "firebase/firestore/lite";
 import { firestoreDb } from "./client";
 
+const ORDERS_CACHE_TTL_MS = 15 * 1000;
+const ordersListCache = new Map();
+const ordersListInflight = new Map();
+const orderCache = new Map();
+const orderInflight = new Map();
+const orderItemsCache = new Map();
+const orderItemsInflight = new Map();
+
+function clearOrdersCache(orderId = "") {
+  const oid = String(orderId || "").trim();
+  ordersListCache.clear();
+  ordersListInflight.clear();
+  if (oid) {
+    orderCache.delete(oid);
+    orderInflight.delete(oid);
+    orderItemsCache.delete(oid);
+    orderItemsInflight.delete(oid);
+  } else {
+    orderCache.clear();
+    orderInflight.clear();
+    orderItemsCache.clear();
+    orderItemsInflight.clear();
+  }
+}
+
 export const ORDER_STATUSES = [
   "draft",
   "submitted",
@@ -280,6 +305,7 @@ export async function createOrderWithItems({
   });
 
   await batch.commit();
+  clearOrdersCache(order_id);
   return { order_id };
 }
 
@@ -288,18 +314,38 @@ export async function getOrdersForViewer({ email, role }) {
   const viewerRole = String(role || "customer").toLowerCase();
   if (!viewerEmail) return [];
 
-  const baseCol = collection(firestoreDb, "orders");
-  const q =
-    viewerRole === "admin"
-      ? query(baseCol, orderBy("created_at", "desc"))
-      : query(baseCol, where("creator_email", "==", viewerEmail));
+  const key = `${viewerRole}::${viewerEmail}`;
+  const now = Date.now();
+  const hit = ordersListCache.get(key);
+  if (hit && now - hit.ts < ORDERS_CACHE_TTL_MS) return hit.value;
+  if (ordersListInflight.has(key)) return ordersListInflight.get(key);
 
-  const snap = await getDocs(q);
-  const rows = snap.docs.map((d) => toOrderRow(d.data(), d.id));
-  if (viewerRole !== "admin") {
-    rows.sort((a, b) => String(b.order_id || "").localeCompare(String(a.order_id || "")));
+  const p = (async () => {
+    const baseCol = collection(firestoreDb, "orders");
+    const q =
+      viewerRole === "admin"
+        ? query(baseCol, orderBy("created_at", "desc"))
+        : query(baseCol, where("creator_email", "==", viewerEmail));
+
+    const snap = await getDocs(q);
+    const rows = snap.docs.map((d) => toOrderRow(d.data(), d.id));
+    if (viewerRole !== "admin") {
+      rows.sort((a, b) => String(b.order_id || "").localeCompare(String(a.order_id || "")));
+    }
+    ordersListCache.set(key, { ts: Date.now(), value: rows });
+    rows.forEach((r) => {
+      const oid = String(r.order_id || "").trim();
+      if (oid) orderCache.set(oid, { ts: Date.now(), value: r });
+    });
+    return rows;
+  })();
+
+  ordersListInflight.set(key, p);
+  try {
+    return await p;
+  } finally {
+    ordersListInflight.delete(key);
   }
-  return rows;
 }
 
 export async function getOrderForViewer({ email, role, order_id }) {
@@ -307,10 +353,30 @@ export async function getOrderForViewer({ email, role, order_id }) {
   const viewerRole = String(role || "customer").toLowerCase();
   if (!viewerEmail || !order_id) return null;
 
-  const ref = doc(firestoreDb, "orders", String(order_id));
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
-  const order = toOrderRow(snap.data(), snap.id);
+  const oid = String(order_id);
+  const now = Date.now();
+  const hit = orderCache.get(oid);
+  let order = hit && now - hit.ts < ORDERS_CACHE_TTL_MS ? hit.value : null;
+  if (!order) {
+    if (orderInflight.has(oid)) {
+      order = await orderInflight.get(oid);
+    } else {
+      const p = (async () => {
+        const ref = doc(firestoreDb, "orders", oid);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) return null;
+        return toOrderRow(snap.data(), snap.id);
+      })();
+      orderInflight.set(oid, p);
+      try {
+        order = await p;
+      } finally {
+        orderInflight.delete(oid);
+      }
+    }
+    orderCache.set(oid, { ts: Date.now(), value: order });
+  }
+  if (!order) return null;
   if (viewerRole !== "admin" && order.creator_email !== viewerEmail) {
     return null;
   }
@@ -321,13 +387,33 @@ export async function getOrderItemsForViewer({ email, role, order_id }) {
   const order = await getOrderForViewer({ email, role, order_id });
   if (!order) return { order: null, items: [] };
 
-  const snap = await getDocs(
-    query(collection(firestoreDb, "orders", String(order_id), "items"), orderBy("item_sl", "asc")),
-  );
+  const oid = String(order_id || "").trim();
+  const now = Date.now();
+  const hit = orderItemsCache.get(oid);
+  let items = hit && now - hit.ts < ORDERS_CACHE_TTL_MS ? hit.value : null;
+  if (!items) {
+    if (orderItemsInflight.has(oid)) {
+      items = await orderItemsInflight.get(oid);
+    } else {
+      const p = (async () => {
+        const snap = await getDocs(
+          query(collection(firestoreDb, "orders", oid, "items"), orderBy("item_sl", "asc")),
+        );
+        return snap.docs.map((d) => toOrderItemRow(d.data(), d.id));
+      })();
+      orderItemsInflight.set(oid, p);
+      try {
+        items = await p;
+      } finally {
+        orderItemsInflight.delete(oid);
+      }
+    }
+    orderItemsCache.set(oid, { ts: Date.now(), value: items });
+  }
 
   return {
     order,
-    items: snap.docs.map((d) => toOrderItemRow(d.data(), d.id)),
+    items,
   };
 }
 
@@ -421,6 +507,7 @@ export async function saveCalculatedSellingPrices({
   }
 
   await batch.commit();
+  clearOrdersCache(oid);
   return { success: true, saved: rows.length };
 }
 
@@ -439,6 +526,7 @@ export async function setOrderCustomerPriceCurrency({ order_id, currency }) {
     },
     { merge: true },
   );
+  clearOrdersCache(oid);
   return { success: true, currency: c };
 }
 
@@ -466,6 +554,7 @@ export async function updateOrderStatus({ order_id, status }) {
     },
     { merge: true },
   );
+  clearOrdersCache(oid);
   return { success: true, status: nextStatus };
 }
 
@@ -527,6 +616,7 @@ export async function submitCustomerPricingDecision({
   );
 
   await batch.commit();
+  clearOrdersCache(oid);
   return { success: true, status: nextStatus };
 }
 
@@ -584,6 +674,7 @@ export async function saveCustomerOfferItem({
     await syncAllocationsNeededQtyForOrderItem(oid, itemId, customer_changed_quantity);
   }
 
+  clearOrdersCache(oid);
   return { success: true };
 }
 
@@ -633,6 +724,7 @@ export async function saveAdminFinalNegotiationItem({
 
   await syncAllocationsNeededQtyForOrderItem(oid, itemId, qty);
   await recomputeOrderHeaderTotals(oid);
+  clearOrdersCache(oid);
   return { success: true };
 }
 
@@ -644,6 +736,7 @@ export async function deleteOrderItemAdmin({ order_id, order_item_id }) {
 
   await deleteDoc(doc(firestoreDb, "orders", oid, "items", itemId));
   await recomputeOrderHeaderTotals(oid);
+  clearOrdersCache(oid);
   return { success: true };
 }
 
@@ -669,5 +762,6 @@ export async function deleteOrderAdmin({ order_id }) {
     ...allocSnap.docs.map((d) => deleteDoc(d.ref)),
   ]);
   await deleteDoc(orderRef);
+  clearOrdersCache(oid);
   return { success: true };
 }

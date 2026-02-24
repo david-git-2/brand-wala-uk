@@ -72,9 +72,25 @@ export default function Products() {
 
   useEffect(() => {
     let alive = true;
+    const CACHE_KEY = "bw_products_cache_v1";
+    const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
     async function load() {
       try {
+        try {
+          const raw = sessionStorage.getItem(CACHE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.ts && Date.now() - Number(parsed.ts) < CACHE_TTL_MS && Array.isArray(parsed?.products)) {
+              if (alive) {
+                setProducts(parsed.products);
+                setLoading(false);
+              }
+              return;
+            }
+          }
+        } catch {}
+
         const res = await fetch(
           `${import.meta.env.BASE_URL}data/pc_data.json`,
           {
@@ -83,7 +99,11 @@ export default function Products() {
         );
         const json = await res.json();
         if (!alive) return;
-        setProducts(json.products || []);
+        const rows = json.products || [];
+        setProducts(rows);
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), products: rows }));
+        } catch {}
       } catch (err) {
         console.error("Failed to load products:", err);
       } finally {

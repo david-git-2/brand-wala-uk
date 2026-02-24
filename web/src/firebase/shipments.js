@@ -13,6 +13,52 @@ import {
 } from "firebase/firestore/lite";
 import { firestoreDb } from "./client";
 
+const SHIP_CACHE_TTL_MS = 15 * 1000;
+let shipmentsListCache = null;
+let shipmentsListCacheTs = 0;
+let shipmentsListInflight = null;
+const shipmentByIdCache = new Map();
+const shipmentByIdInflight = new Map();
+const allocByShipmentCache = new Map();
+const allocByShipmentInflight = new Map();
+const allocByOrderCache = new Map();
+const allocByOrderInflight = new Map();
+const snapshotByShipmentCache = new Map();
+const snapshotByShipmentInflight = new Map();
+
+function clearShipmentsCache({ shipmentId = "", orderId = "" } = {}) {
+  const sid = String(shipmentId || "").trim();
+  const oid = String(orderId || "").trim();
+
+  shipmentsListCache = null;
+  shipmentsListCacheTs = 0;
+  shipmentsListInflight = null;
+
+  if (sid) {
+    shipmentByIdCache.delete(sid);
+    shipmentByIdInflight.delete(sid);
+    allocByShipmentCache.delete(sid);
+    allocByShipmentInflight.delete(sid);
+    snapshotByShipmentCache.delete(sid);
+    snapshotByShipmentInflight.delete(sid);
+  } else {
+    shipmentByIdCache.clear();
+    shipmentByIdInflight.clear();
+    allocByShipmentCache.clear();
+    allocByShipmentInflight.clear();
+    snapshotByShipmentCache.clear();
+    snapshotByShipmentInflight.clear();
+  }
+
+  if (oid) {
+    allocByOrderCache.delete(oid);
+    allocByOrderInflight.delete(oid);
+  } else {
+    allocByOrderCache.clear();
+    allocByOrderInflight.clear();
+  }
+}
+
 function n(v, d = 0) {
   const x = Number(v);
   return Number.isFinite(x) ? x : d;
@@ -158,15 +204,48 @@ async function getOrderItemByRef(order_id, order_item_id) {
 }
 
 export async function listShipments() {
-  const snap = await getDocs(query(collection(firestoreDb, "shipments"), orderBy("created_at", "desc")));
-  return snap.docs.map((d) => ({ shipment_id: d.id, ...d.data() }));
+  const now = Date.now();
+  if (shipmentsListCache && now - shipmentsListCacheTs < SHIP_CACHE_TTL_MS) return shipmentsListCache;
+  if (shipmentsListInflight) return shipmentsListInflight;
+
+  shipmentsListInflight = (async () => {
+    const snap = await getDocs(query(collection(firestoreDb, "shipments"), orderBy("created_at", "desc")));
+    const rows = snap.docs.map((d) => ({ shipment_id: d.id, ...d.data() }));
+    shipmentsListCache = rows;
+    shipmentsListCacheTs = Date.now();
+    rows.forEach((r) => {
+      const sid = String(r.shipment_id || "").trim();
+      if (sid) shipmentByIdCache.set(sid, { ts: Date.now(), value: r });
+    });
+    return rows;
+  })();
+  try {
+    return await shipmentsListInflight;
+  } finally {
+    shipmentsListInflight = null;
+  }
 }
 
 export async function getShipment(shipment_id) {
   const id = String(shipment_id || "").trim();
   if (!id) return null;
-  const snap = await getDoc(doc(firestoreDb, "shipments", id));
-  return snap.exists() ? { shipment_id: snap.id, ...snap.data() } : null;
+  const now = Date.now();
+  const hit = shipmentByIdCache.get(id);
+  if (hit && now - hit.ts < SHIP_CACHE_TTL_MS) return hit.value;
+  if (shipmentByIdInflight.has(id)) return shipmentByIdInflight.get(id);
+
+  const p = (async () => {
+    const snap = await getDoc(doc(firestoreDb, "shipments", id));
+    const value = snap.exists() ? { shipment_id: snap.id, ...snap.data() } : null;
+    shipmentByIdCache.set(id, { ts: Date.now(), value });
+    return value;
+  })();
+  shipmentByIdInflight.set(id, p);
+  try {
+    return await p;
+  } finally {
+    shipmentByIdInflight.delete(id);
+  }
 }
 
 export async function createShipment(payload = {}) {
@@ -188,6 +267,7 @@ export async function createShipment(payload = {}) {
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
   });
+  clearShipmentsCache({ shipmentId: id });
   return getShipment(id);
 }
 
@@ -221,6 +301,7 @@ export async function updateShipment(shipment_id, patch = {}) {
     ...next,
     updated_at: serverTimestamp(),
   });
+  clearShipmentsCache({ shipmentId: id });
   return getShipment(id);
 }
 
@@ -232,24 +313,53 @@ export async function deleteShipment(shipment_id) {
   );
   await Promise.all(alloc.docs.map((d) => deleteDoc(d.ref)));
   await deleteDoc(doc(firestoreDb, "shipments", id));
+  clearShipmentsCache({ shipmentId: id });
 }
 
 export async function listAllocationsForShipment(shipment_id) {
   const sid = String(shipment_id || "").trim();
   if (!sid) return [];
-  const snap = await getDocs(
-    query(collection(firestoreDb, "shipment_allocations"), where("shipment_id", "==", sid)),
-  );
-  return snap.docs.map((d) => ({ allocation_id: d.id, ...d.data() }));
+  const now = Date.now();
+  const hit = allocByShipmentCache.get(sid);
+  if (hit && now - hit.ts < SHIP_CACHE_TTL_MS) return hit.value;
+  if (allocByShipmentInflight.has(sid)) return allocByShipmentInflight.get(sid);
+  const p = (async () => {
+    const snap = await getDocs(
+      query(collection(firestoreDb, "shipment_allocations"), where("shipment_id", "==", sid)),
+    );
+    const rows = snap.docs.map((d) => ({ allocation_id: d.id, ...d.data() }));
+    allocByShipmentCache.set(sid, { ts: Date.now(), value: rows });
+    return rows;
+  })();
+  allocByShipmentInflight.set(sid, p);
+  try {
+    return await p;
+  } finally {
+    allocByShipmentInflight.delete(sid);
+  }
 }
 
 export async function listAllocationsForOrder(order_id) {
   const oid = String(order_id || "").trim();
   if (!oid) return [];
-  const snap = await getDocs(
-    query(collection(firestoreDb, "shipment_allocations"), where("order_id", "==", oid)),
-  );
-  return snap.docs.map((d) => ({ allocation_id: d.id, ...d.data() }));
+  const now = Date.now();
+  const hit = allocByOrderCache.get(oid);
+  if (hit && now - hit.ts < SHIP_CACHE_TTL_MS) return hit.value;
+  if (allocByOrderInflight.has(oid)) return allocByOrderInflight.get(oid);
+  const p = (async () => {
+    const snap = await getDocs(
+      query(collection(firestoreDb, "shipment_allocations"), where("order_id", "==", oid)),
+    );
+    const rows = snap.docs.map((d) => ({ allocation_id: d.id, ...d.data() }));
+    allocByOrderCache.set(oid, { ts: Date.now(), value: rows });
+    return rows;
+  })();
+  allocByOrderInflight.set(oid, p);
+  try {
+    return await p;
+  } finally {
+    allocByOrderInflight.delete(oid);
+  }
 }
 
 export async function createAllocation(payload = {}) {
@@ -276,6 +386,7 @@ export async function createAllocation(payload = {}) {
   };
   const computed = computeAllocationFields(payload, ship, item);
   await setDoc(doc(firestoreDb, "shipment_allocations", id), { ...core, ...computed });
+  clearShipmentsCache({ shipmentId: sid, orderId: core.order_id });
   return { allocation_id: id, ...core, ...computed };
 }
 
@@ -303,13 +414,21 @@ export async function updateAllocation(allocation_id, patch = {}) {
   }
 
   const next = await getDoc(doc(firestoreDb, "shipment_allocations", id));
+  clearShipmentsCache({ shipmentId: prev.shipment_id, orderId: prev.order_id });
   return { allocation_id: id, ...next.data() };
 }
 
 export async function deleteAllocation(allocation_id) {
   const id = String(allocation_id || "").trim();
   if (!id) return;
+  const snap = await getDoc(doc(firestoreDb, "shipment_allocations", id));
+  const prev = snap.exists() ? snap.data() : null;
   await deleteDoc(doc(firestoreDb, "shipment_allocations", id));
+  if (prev) {
+    clearShipmentsCache({ shipmentId: prev.shipment_id, orderId: prev.order_id });
+  } else {
+    clearShipmentsCache();
+  }
 }
 
 export async function suggestAllocationsForShipment(shipment_id, order_id) {
@@ -370,6 +489,7 @@ export async function recalcShipmentAllocations(shipment_id) {
       });
     }),
   );
+  clearShipmentsCache({ shipmentId: sid });
 }
 
 function snapshotDocId(shipment_id, product_id) {
@@ -379,10 +499,24 @@ function snapshotDocId(shipment_id, product_id) {
 export async function listShipmentProductSnapshots(shipment_id) {
   const sid = String(shipment_id || "").trim();
   if (!sid) return [];
-  const snap = await getDocs(
-    query(collection(firestoreDb, "shipment_product_snapshots"), where("shipment_id", "==", sid)),
-  );
-  return snap.docs.map((d) => ({ snapshot_id: d.id, ...d.data() }));
+  const now = Date.now();
+  const hit = snapshotByShipmentCache.get(sid);
+  if (hit && now - hit.ts < SHIP_CACHE_TTL_MS) return hit.value;
+  if (snapshotByShipmentInflight.has(sid)) return snapshotByShipmentInflight.get(sid);
+  const p = (async () => {
+    const snap = await getDocs(
+      query(collection(firestoreDb, "shipment_product_snapshots"), where("shipment_id", "==", sid)),
+    );
+    const rows = snap.docs.map((d) => ({ snapshot_id: d.id, ...d.data() }));
+    snapshotByShipmentCache.set(sid, { ts: Date.now(), value: rows });
+    return rows;
+  })();
+  snapshotByShipmentInflight.set(sid, p);
+  try {
+    return await p;
+  } finally {
+    snapshotByShipmentInflight.delete(sid);
+  }
 }
 
 export async function upsertShipmentProductSnapshot(payload = {}) {
@@ -412,5 +546,6 @@ export async function upsertShipmentProductSnapshot(payload = {}) {
     { merge: true },
   );
   const snap = await getDoc(doc(firestoreDb, "shipment_product_snapshots", id));
+  clearShipmentsCache({ shipmentId: shipment_id });
   return snap.exists() ? { snapshot_id: id, ...snap.data() } : null;
 }

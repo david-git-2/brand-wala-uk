@@ -4,6 +4,8 @@ import ProtectedRoute from "../auth/ProtectedRoute";
 import Login from "../pages/Login";
 import Products from "../pages/Products";
 import Cart from "../pages/Cart";
+import NotFound from "../pages/NotFound";
+import PermissionDenied from "../pages/PermissionDenied";
 
 // Customer pages
 import CustomerOrders from "../pages/customer/CustomerOrders";
@@ -36,7 +38,7 @@ function AboutRedirect() {
 
 function CartRouteGuard({ children }) {
   const { user } = useAuth();
-  if (!user?.can_use_cart) return <Navigate to="/orders" replace />;
+  if (!user?.can_use_cart) return <Navigate to="/permission-denied" replace />;
   return children;
 }
 
@@ -44,7 +46,7 @@ function CartRouteGuard({ children }) {
 function AdminRoute({ children }) {
   const { user } = useAuth();
   const role = String(user?.role || "customer").toLowerCase();
-  if (role !== "admin") return <Navigate to="/customer/orders" replace />;
+  if (role !== "admin") return <Navigate to="/permission-denied" replace />;
   return children;
 }
 
@@ -55,6 +57,7 @@ export default function AppRoutes() {
       <Route path="/" element={<Navigate to="/products" replace />} />
 
       <Route path="/login" element={<Login />} />
+      <Route path="/permission-denied" element={<PermissionDenied />} />
 
       <Route
         path="/products"
@@ -209,7 +212,7 @@ export default function AppRoutes() {
         }
       />
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/products" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

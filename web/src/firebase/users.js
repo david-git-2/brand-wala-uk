@@ -13,6 +13,14 @@ import {
 import { firestoreDb } from "./client";
 
 const USERS_COLLECTION = "users";
+const PROFILE_TTL_MS = 60 * 1000;
+const LIST_TTL_MS = 30 * 1000;
+
+const profileCache = new Map();
+const profileInflight = new Map();
+let usersListCache = null;
+let usersListCacheTs = 0;
+let usersListInflight = null;
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
@@ -51,22 +59,68 @@ function userDocRefByEmail(email) {
   return doc(firestoreDb, USERS_COLLECTION, normalizeEmail(email));
 }
 
+function invalidateUsersCache(email) {
+  const e = normalizeEmail(email);
+  if (e) {
+    profileCache.delete(e);
+    profileInflight.delete(e);
+  }
+  usersListCache = null;
+  usersListCacheTs = 0;
+  usersListInflight = null;
+}
+
 export async function getUserProfileByEmail(email) {
   const normalized = normalizeEmail(email);
   if (!normalized) return null;
 
-  const byIdSnap = await getDoc(userDocRefByEmail(normalized));
-  if (!byIdSnap.exists()) return null;
-  return normalizeUser({ ...byIdSnap.data(), email: normalized });
+  const now = Date.now();
+  const hit = profileCache.get(normalized);
+  if (hit && now - hit.ts < PROFILE_TTL_MS) return hit.value;
+  if (profileInflight.has(normalized)) return profileInflight.get(normalized);
+
+  const p = (async () => {
+    const byIdSnap = await getDoc(userDocRefByEmail(normalized));
+    const value = byIdSnap.exists()
+      ? normalizeUser({ ...byIdSnap.data(), email: normalized })
+      : null;
+    profileCache.set(normalized, { ts: Date.now(), value });
+    return value;
+  })();
+  profileInflight.set(normalized, p);
+  try {
+    return await p;
+  } finally {
+    profileInflight.delete(normalized);
+  }
 }
 
 export async function listUsers() {
-  const q = query(
-    collection(firestoreDb, USERS_COLLECTION),
-    orderBy("email", "asc"),
-  );
-  const qs = await getDocs(q);
-  return qs.docs.map((d) => normalizeUser(d.data()));
+  const now = Date.now();
+  if (usersListCache && now - usersListCacheTs < LIST_TTL_MS) {
+    return usersListCache;
+  }
+  if (usersListInflight) return usersListInflight;
+
+  usersListInflight = (async () => {
+    const q = query(
+      collection(firestoreDb, USERS_COLLECTION),
+      orderBy("email", "asc"),
+    );
+    const qs = await getDocs(q);
+    const rows = qs.docs.map((d) => normalizeUser(d.data()));
+    usersListCache = rows;
+    usersListCacheTs = Date.now();
+    rows.forEach((r) => {
+      profileCache.set(normalizeEmail(r.email), { ts: Date.now(), value: r });
+    });
+    return rows;
+  })();
+  try {
+    return await usersListInflight;
+  } finally {
+    usersListInflight = null;
+  }
 }
 
 export async function createUser(payload) {
@@ -78,6 +132,7 @@ export async function createUser(payload) {
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
   });
+  invalidateUsersCache(email);
 }
 
 export async function updateUser(userEmail, patch = {}) {
@@ -97,10 +152,12 @@ export async function updateUser(userEmail, patch = {}) {
   update.updated_at = serverTimestamp();
 
   await updateDoc(userDocRefByEmail(email), update);
+  invalidateUsersCache(email);
 }
 
 export async function removeUser(userEmail) {
   const email = normalizeEmail(userEmail);
   if (!email) throw new Error("User email is required");
   await deleteDoc(userDocRefByEmail(email));
+  invalidateUsersCache(email);
 }

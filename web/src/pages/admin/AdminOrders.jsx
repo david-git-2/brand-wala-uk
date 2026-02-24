@@ -13,6 +13,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function OrdersSkeleton() {
   return (
@@ -42,6 +51,9 @@ export default function AdminOrders() {
   const [statusDraft, setStatusDraft] = useState({});
   const [statusSaving, setStatusSaving] = useState({});
   const [deleteSaving, setDeleteSaving] = useState({});
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -106,8 +118,6 @@ export default function AdminOrders() {
     if (!id) return;
     const status = String(order?.status || "").toLowerCase();
     if (status !== "cancelled") return;
-    const name = String(order?.order_name || "this order");
-    if (!window.confirm(`Delete cancelled order "${name}" permanently?`)) return;
 
     setDeleteSaving((p) => ({ ...p, [id]: true }));
     setErr("");
@@ -128,6 +138,12 @@ export default function AdminOrders() {
         return next;
       });
     }
+  }
+
+  function openDelete(order) {
+    setDeleteTarget(order || null);
+    setDeleteConfirmName("");
+    setDeleteOpen(true);
   }
 
   const sorted = useMemo(
@@ -205,7 +221,7 @@ export default function AdminOrders() {
                     <Button
                       size="icon"
                       variant="destructive"
-                      onClick={() => deleteCancelledOrder(o)}
+                      onClick={() => openDelete(o)}
                       disabled={!!deleteSaving[o.order_id]}
                       title="Delete cancelled order"
                       aria-label="Delete cancelled order"
@@ -220,6 +236,59 @@ export default function AdminOrders() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(next) => {
+          if (!next && !deleteSaving[String(deleteTarget?.order_id || "")]) {
+            setDeleteOpen(false);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete cancelled order?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget
+                ? `Type "${deleteTarget.order_name || "Untitled"}" to permanently delete this order.`
+                : "Type the order name to confirm deletion."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Input
+            value={deleteConfirmName}
+            onChange={(e) => setDeleteConfirmName(e.target.value)}
+            placeholder={String(deleteTarget?.order_name || "")}
+            disabled={!!deleteSaving[String(deleteTarget?.order_id || "")]}
+          />
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+              disabled={!!deleteSaving[String(deleteTarget?.order_id || "")]}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                !!deleteSaving[String(deleteTarget?.order_id || "")] ||
+                String(deleteConfirmName || "").trim() !== String(deleteTarget?.order_name || "").trim()
+              }
+              onClick={async () => {
+                if (!deleteTarget) return;
+                await deleteCancelledOrder(deleteTarget);
+                setDeleteOpen(false);
+                setDeleteTarget(null);
+                setDeleteConfirmName("");
+              }}
+            >
+              {deleteSaving[String(deleteTarget?.order_id || "")] ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
