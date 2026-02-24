@@ -50,6 +50,7 @@ export default function AdminUsers() {
     role: "customer",
     active: "1",
     can_see_price_gbp: "0",
+    can_use_cart: "1",
   });
 
   const loadUsers = useCallback(async () => {
@@ -91,6 +92,7 @@ export default function AdminUsers() {
         role: createForm.role,
         active: Number(createForm.active),
         can_see_price_gbp: Number(createForm.can_see_price_gbp),
+        can_use_cart: Number(createForm.can_use_cart),
       });
 
       setCreateForm({
@@ -99,6 +101,7 @@ export default function AdminUsers() {
         role: "customer",
         active: "1",
         can_see_price_gbp: "0",
+        can_use_cart: "1",
       });
       await loadUsers();
     } catch (e2) {
@@ -184,7 +187,7 @@ export default function AdminUsers() {
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-muted-foreground">Active</label>
                     <Select value={createForm.active} onValueChange={(v) => setCreateForm((s) => ({ ...s, active: v }))}>
@@ -200,6 +203,19 @@ export default function AdminUsers() {
                     <Select
                       value={createForm.can_see_price_gbp}
                       onValueChange={(v) => setCreateForm((s) => ({ ...s, can_see_price_gbp: v }))}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1</SelectItem>
+                        <SelectItem value="0">0</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Can Use Cart</label>
+                    <Select
+                      value={createForm.can_use_cart}
+                      onValueChange={(v) => setCreateForm((s) => ({ ...s, can_use_cart: v }))}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -257,10 +273,11 @@ export default function AdminUsers() {
                               active:{Number(u.active) === 1 ? "1" : "0"}
                             </Badge>
                             <Badge variant="outline">pound price:{Number(u.can_see_price_gbp) === 1 ? "1" : "0"}</Badge>
+                            <Badge variant="outline">cart:{Number(u.can_use_cart) === 1 ? "1" : "0"}</Badge>
                           </div>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
+                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-6">
                           <Select
                             value={String(u.role || "customer")}
                             onValueChange={(v) => handleUpdate(u.email, { role: v })}
@@ -294,6 +311,18 @@ export default function AdminUsers() {
                             <SelectContent>
                               <SelectItem value="1">price=1</SelectItem>
                               <SelectItem value="0">price=0</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Select
+                            value={String(Number(u.can_use_cart) === 1 ? "1" : "0")}
+                            onValueChange={(v) => handleUpdate(u.email, { can_use_cart: Number(v) })}
+                            disabled={saving}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">cart=1</SelectItem>
+                              <SelectItem value="0">cart=0</SelectItem>
                             </SelectContent>
                           </Select>
 

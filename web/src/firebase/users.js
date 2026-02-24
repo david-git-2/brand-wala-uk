@@ -35,12 +35,14 @@ function normalizeUser(raw) {
   const role = normalizeRole(raw?.role);
   const active = toNum01(raw?.active, 1);
   const canSee = toNum01(raw?.can_see_price_gbp, 0);
+  const canUseCart = toNum01(raw?.can_use_cart, 1);
   return {
     email,
     name: String(raw?.name || "").trim(),
     role,
     active,
     can_see_price_gbp: canSee,
+    can_use_cart: canUseCart,
     is_admin: role === "admin",
   };
 }
@@ -88,6 +90,9 @@ export async function updateUser(userEmail, patch = {}) {
   if (patch.active !== undefined) update.active = toNum01(patch.active, 1);
   if (patch.can_see_price_gbp !== undefined) {
     update.can_see_price_gbp = toNum01(patch.can_see_price_gbp, 0);
+  }
+  if (patch.can_use_cart !== undefined) {
+    update.can_use_cart = toNum01(patch.can_use_cart, 1);
   }
   update.updated_at = serverTimestamp();
 

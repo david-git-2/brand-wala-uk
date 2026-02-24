@@ -34,6 +34,12 @@ function AboutRedirect() {
   return <Navigate to={role === "admin" ? "/about/admin" : "/about/customer"} replace />;
 }
 
+function CartRouteGuard({ children }) {
+  const { user } = useAuth();
+  if (!user?.can_use_cart) return <Navigate to="/orders" replace />;
+  return children;
+}
+
 // Admin-only guard
 function AdminRoute({ children }) {
   const { user } = useAuth();
@@ -196,7 +202,9 @@ export default function AppRoutes() {
         path="/cart"
         element={
           <ProtectedRoute>
-            <Cart />
+            <CartRouteGuard>
+              <Cart />
+            </CartRouteGuard>
           </ProtectedRoute>
         }
       />

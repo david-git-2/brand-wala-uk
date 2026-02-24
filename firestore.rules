@@ -14,41 +14,79 @@ service cloud.firestore {
       return hasEmail() ? request.auth.token.email.lower() : "";
     }
 
-    function isAdmin() {
+    function profileExists() {
       return hasEmail() &&
-        exists(/databases/$(database)/documents/users/$(myEmailLower())) &&
-        get(/databases/$(database)/documents/users/$(myEmailLower())).data.role == "admin" &&
+        exists(/databases/$(database)/documents/users/$(myEmailLower()));
+    }
+
+    function profileActive() {
+      return profileExists() &&
         get(/databases/$(database)/documents/users/$(myEmailLower())).data.active == 1;
     }
 
+    function profileRoleAdmin() {
+      return profileExists() &&
+        get(/databases/$(database)/documents/users/$(myEmailLower())).data.role == "admin";
+    }
+
+    function profileCanUseCart() {
+      return profileExists() && (
+        !("can_use_cart" in get(/databases/$(database)/documents/users/$(myEmailLower())).data) ||
+        get(/databases/$(database)/documents/users/$(myEmailLower())).data.can_use_cart == 1
+      );
+    }
+
+    function isActive() {
+      return signedIn() && (
+        request.auth.token.active == true ||
+        profileActive()
+      );
+    }
+
+    function isAdmin() {
+      return isActive() && (
+        request.auth.token.role == "admin" ||
+        profileRoleAdmin()
+      );
+    }
+
+    function canUseCart() {
+      return isActive() && (
+        request.auth.token.can_use_cart == true ||
+        profileCanUseCart()
+      );
+    }
+
+    function canAccessCart(cartEmail) {
+      return canUseCart() && (isAdmin() || myEmailLower() == cartEmail.lower());
+    }
+
     match /users/{userEmail} {
-      // Allow signed-in users to fetch a single user document.
-      // Listing remains admin-only.
-      allow get: if signedIn();
+      allow get: if signedIn() && (isAdmin() || myEmailLower() == userEmail.lower());
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
     }
 
     match /carts/{cartEmail} {
-      allow get, list, create, update, delete: if signedIn();
+      allow get, list, create, update, delete: if canAccessCart(cartEmail);
 
       match /items/{itemId} {
-        allow get, list, create, update, delete: if signedIn();
+        allow get, list, create, update, delete: if canAccessCart(cartEmail);
       }
     }
 
     match /orders/{orderId} {
-      allow get, list, create: if signedIn();
+      allow get, list, create: if isActive();
       allow update: if isAdmin() || (
-        hasEmail() &&
+        isActive() &&
         resource.data.creator_email == myEmailLower()
       );
       allow delete: if isAdmin();
 
       match /items/{itemId} {
-        allow get, list, create: if signedIn();
+        allow get, list, create: if isActive();
         allow update: if isAdmin() || (
-          hasEmail() &&
+          isActive() &&
           get(/databases/$(database)/documents/orders/$(orderId)).data.creator_email == myEmailLower()
         );
         allow delete: if isAdmin();

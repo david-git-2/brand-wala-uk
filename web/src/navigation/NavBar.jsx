@@ -12,6 +12,7 @@ import config from "./navConfig.json";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,17 +43,19 @@ export default function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const role = String(user?.role || "customer").toLowerCase();
+  const canUseCart = !!user?.can_use_cart;
 
   const links = useMemo(() => {
     const all = config?.links || [];
     return all.filter((l) => {
+      if (String(l?.to || "") === "/cart" && !canUseCart) return false;
       const roles = Array.isArray(l.roles)
         ? l.roles.map((r) => String(r).toLowerCase())
         : null;
       if (!roles || roles.length === 0) return true;
       return roles.includes(role);
     });
-  }, [role]);
+  }, [canUseCart, role]);
 
   // close mobile drawer on route change
   useEffect(() => {
@@ -61,7 +64,8 @@ export default function NavBar() {
 
   const email = user?.email || "";
   const name = user?.name || "";
-  const canSeePrice = !!user?.can_see_price_gbp;
+  const photoUrl = user?.photo_url || "";
+  const fallbackText = (name || email || "U").trim().slice(0, 1).toUpperCase();
 
   return (
     <div className="sticky top-0 z-50">
@@ -102,11 +106,11 @@ export default function NavBar() {
               {/* Account dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="rounded-xl gap-2">
-                    <User className="h-4 w-4" />
-                    <span className="hidden max-w-[180px] truncate sm:inline">
-                      {email || "Account"}
-                    </span>
+                  <Button variant="outline" size="icon" className="rounded-xl">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={photoUrl} alt={name || email || "User"} referrerPolicy="no-referrer" />
+                      <AvatarFallback className="text-[10px]">{fallbackText}</AvatarFallback>
+                    </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
 
@@ -115,17 +119,19 @@ export default function NavBar() {
                   className="w-[320px] rounded-2xl"
                 >
                   <DropdownMenuLabel className="space-y-1">
+                    <div className="mb-2 flex items-center gap-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={photoUrl} alt={name || email || "User"} referrerPolicy="no-referrer" />
+                        <AvatarFallback>{fallbackText}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold text-foreground">{name || "User"}</div>
+                        <div className="truncate text-xs text-muted-foreground">{email || "—"}</div>
+                      </div>
+                    </div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Logged in
                     </div>
-                    <div className="truncate text-sm font-bold text-foreground">
-                      {email || "—"}
-                    </div>
-                    {name ? (
-                      <div className="truncate text-sm font-normal text-muted-foreground">
-                        {name}
-                      </div>
-                    ) : null}
                   </DropdownMenuLabel>
 
                   <DropdownMenuSeparator />
@@ -136,15 +142,6 @@ export default function NavBar() {
                       <Badge variant="secondary" className="rounded-full">
                         {role}
                       </Badge>
-                    </div>
-
-                    <div className="flex items-center justify-between px-2 py-1">
-                      <span className="text-muted-foreground">
-                        Can see pound price
-                      </span>
-                      <span className="font-semibold text-foreground">
-                        {canSeePrice ? "Yes" : "No"}
-                      </span>
                     </div>
                   </div>
 
@@ -224,9 +221,6 @@ export default function NavBar() {
                           <Badge variant="secondary" className="rounded-full">
                             {role}
                           </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            Price: {canSeePrice ? "Yes" : "No"}
-                          </span>
                         </div>
 
                         <Button

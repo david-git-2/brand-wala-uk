@@ -6,6 +6,9 @@ import "./index.css";
 
 import { AuthProvider } from "./auth/AuthProvider";
 import { CartProvider } from "./cart/CartProvider.jsx";
+import { installNetworkActivityTracker } from "./lib/networkActivity";
+
+installNetworkActivityTracker();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   // <React.StrictMode>

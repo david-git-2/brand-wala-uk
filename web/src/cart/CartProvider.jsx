@@ -127,13 +127,15 @@ export function CartProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const email = user?.email || "";
+  const canUseCart = !!user?.can_use_cart;
 
   useEffect(() => {
     let alive = true;
 
     async function load() {
-      if (!email) {
+      if (!email || !canUseCart) {
         dispatch({ type: "SET_ITEMS", items: [] });
+        dispatch({ type: "CLOSE" });
         return;
       }
 
@@ -143,7 +145,16 @@ export function CartProvider({ children }) {
         if (!alive) return;
         dispatch({ type: "SET_ITEMS", items: data.items || [] });
       } catch (e) {
-        console.error("cartGetItems failed:", e);
+        const code = String(e?.code || "");
+        const msg = String(e?.message || "");
+        const denied = code.includes("permission-denied") || msg.includes("Missing or insufficient permissions");
+        if (!denied) {
+          console.error("cartGetItems failed:", e);
+        }
+        if (alive) {
+          dispatch({ type: "SET_ITEMS", items: [] });
+          dispatch({ type: "CLOSE" });
+        }
       } finally {
         if (alive) dispatch({ type: "SET_GLOBAL_LOADING", loading: false });
       }
@@ -153,7 +164,7 @@ export function CartProvider({ children }) {
     return () => {
       alive = false;
     };
-  }, [email]);
+  }, [canUseCart, email]);
 
   const api = useMemo(() => {
     const itemsArr = Object.entries(state.items).map(([key, v]) => ({
@@ -165,6 +176,7 @@ export function CartProvider({ children }) {
     const getItemOp = (key) => state.itemLoading[key] || null;
 
     const add = async (product, qty) => {
+      if (!canUseCart) throw new Error("Cart is disabled for your account");
       if (!email) throw new Error("No user email");
 
       const key = getKey(product);
@@ -200,6 +212,7 @@ export function CartProvider({ children }) {
     };
 
     const remove = async (productId) => {
+      if (!canUseCart) throw new Error("Cart is disabled for your account");
       if (!email) throw new Error("No user email");
       const key = String(productId || "").trim();
       if (!key) return;
@@ -225,6 +238,7 @@ export function CartProvider({ children }) {
 
     // NOTE: keep name setQty (existing)
     const setQty = async (productId, qty) => {
+      if (!canUseCart) throw new Error("Cart is disabled for your account");
       if (!email) throw new Error("No user email");
 
       const key = String(productId || "").trim();
@@ -275,6 +289,7 @@ export function CartProvider({ children }) {
     };
 
     const clear = async () => {
+      if (!canUseCart) throw new Error("Cart is disabled for your account");
       if (!email) throw new Error("No user email");
       dispatch({ type: "SET_GLOBAL_LOADING", loading: true });
 
@@ -295,6 +310,7 @@ export function CartProvider({ children }) {
     };
 
     const refresh = async () => {
+      if (!canUseCart) return;
       if (!email) return;
       dispatch({ type: "SET_GLOBAL_LOADING", loading: true });
       try {
@@ -308,6 +324,7 @@ export function CartProvider({ children }) {
     // ✅ Create order from cart
     // Server should set status = submitted, and should read items from cart if body.items empty
     const createOrder = async (orderName) => {
+      if (!canUseCart) throw new Error("Cart is disabled for your account");
       if (!email) throw new Error("No user email");
       const name = String(orderName || "").trim();
       if (!name) throw new Error("Missing order_name");
@@ -388,7 +405,7 @@ export function CartProvider({ children }) {
       // order
       createOrder, // ✅ new
     };
-  }, [email, state.items, state.itemLoading, state.loading, state.open, state.orderLoading, user?.name, user?.role]);
+  }, [canUseCart, email, state.items, state.itemLoading, state.loading, state.open, state.orderLoading, user?.name, user?.role]);
 
   return <CartContext.Provider value={api}>{children}</CartContext.Provider>;
 }
