@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import {
+  deleteOrderAdmin,
   getAllowedNextOrderStatuses,
   getOrdersForViewer,
   updateOrderStatus,
@@ -39,6 +41,7 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
   const [statusDraft, setStatusDraft] = useState({});
   const [statusSaving, setStatusSaving] = useState({});
+  const [deleteSaving, setDeleteSaving] = useState({});
 
   useEffect(() => {
     let alive = true;
@@ -98,6 +101,35 @@ export default function AdminOrders() {
     }
   }
 
+  async function deleteCancelledOrder(order) {
+    const id = String(order?.order_id || "");
+    if (!id) return;
+    const status = String(order?.status || "").toLowerCase();
+    if (status !== "cancelled") return;
+    const name = String(order?.order_name || "this order");
+    if (!window.confirm(`Delete cancelled order "${name}" permanently?`)) return;
+
+    setDeleteSaving((p) => ({ ...p, [id]: true }));
+    setErr("");
+    try {
+      await deleteOrderAdmin({ order_id: id });
+      setOrders((prev) => prev.filter((o) => String(o.order_id) !== id));
+      setStatusDraft((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch (e) {
+      setErr(e?.message || "Failed to delete order");
+    } finally {
+      setDeleteSaving((p) => {
+        const next = { ...p };
+        delete next[id];
+        return next;
+      });
+    }
+  }
+
   const sorted = useMemo(
     () => [...orders].sort((a, b) => String(b.order_id).localeCompare(String(a.order_id))),
     [orders],
@@ -124,11 +156,11 @@ export default function AdminOrders() {
             <CardTitle className="text-base">All Orders</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {sorted.map((o) => (
+            {sorted.map((o, idx) => (
               <div key={o.order_id} className="flex flex-col gap-3 rounded-lg border p-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <div className="truncate text-sm font-semibold">{o.order_name || "Untitled"}</div>
+                    <div className="truncate text-sm font-semibold">#{idx + 1} {o.order_name || "Untitled"}</div>
                     <Badge variant="secondary">{o.status || "submitted"}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">{o.order_id} • {o.creator_email}</div>
@@ -169,6 +201,18 @@ export default function AdminOrders() {
                   >
                     {statusSaving[o.order_id] ? "Saving..." : "Update"}
                   </Button>
+                  {String(o.status || "").toLowerCase() === "cancelled" ? (
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      onClick={() => deleteCancelledOrder(o)}
+                      disabled={!!deleteSaving[o.order_id]}
+                      title="Delete cancelled order"
+                      aria-label="Delete cancelled order"
+                    >
+                      {deleteSaving[o.order_id] ? "..." : <Trash2 className="h-4 w-4" />}
+                    </Button>
+                  ) : null}
                   <Button size="sm" onClick={() => nav(`/admin/orders/${o.order_id}`)}>View</Button>
                 </div>
               </div>

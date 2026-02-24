@@ -75,10 +75,10 @@ export default function CustomerOrders() {
             <CardTitle className="text-base">Orders</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {sorted.map((o) => (
+            {sorted.map((o, idx) => (
               <div key={o.order_id} className="flex items-center justify-between rounded-lg border p-3">
                 <div>
-                  <div className="text-sm font-semibold">{o.order_name || "Untitled"}</div>
+                  <div className="text-sm font-semibold">#{idx + 1} {o.order_name || "Untitled"}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{o.order_id}</div>
                   <div className="mt-1">
                     <Badge variant="secondary">{String(o.status || "submitted").toLowerCase()}</Badge>

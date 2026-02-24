@@ -39,10 +39,17 @@ function gbp(v) {
   return `£${(Number(v) || 0).toFixed(2)}`;
 }
 function bdt(v) {
-  return `${Math.round(Number(v) || 0)} BDT`;
+  return `৳${Math.round(Number(v) || 0)}`;
 }
 function r2(v) {
   return Number((Number(v) || 0).toFixed(2));
+}
+function isIncompleteNumberInput(v) {
+  const s = String(v ?? "").trim();
+  if (!s) return true;
+  if (s === "-" || s === "." || s === "-.") return true;
+  if (s.endsWith(".")) return true;
+  return false;
 }
 function n(v, d = 0) {
   const x = Number(v);
@@ -182,18 +189,12 @@ export default function AdminOrderDetails() {
         setOrder(data.order);
         setItems(data.items || []);
         const savedCalc = data?.order?.calculated_selling_price || null;
-        if (savedCalc) {
-          const mode = String(savedCalc.mode || "purchase");
-          const pct = Number(savedCalc.profit_rate_pct);
-          const cur = String(savedCalc.customer_price_currency || "bdt").toLowerCase();
-          setPriceBase(mode === "total" ? "total" : "purchase");
-          setProfitRatePct(Number.isFinite(pct) ? String(pct) : "10");
-          setCustomerPriceCurrency(cur === "gbp" ? "gbp" : "bdt");
-          setPriceEditMode(false);
-        } else {
-          setCustomerPriceCurrency("bdt");
-          setPriceEditMode(true);
-        }
+        const cur = String(savedCalc?.customer_price_currency || "bdt").toLowerCase();
+        setCustomerPriceCurrency(cur === "gbp" ? "gbp" : "bdt");
+        // Price mode/rate are FE preview controls; do not load persisted mode/rate.
+        setPriceBase("purchase");
+        setProfitRatePct("10");
+        setPriceEditMode(true);
         setShipments(Array.isArray(ships) ? ships : []);
         const orderAllocs = Array.isArray(allocs) ? allocs : [];
         setOrderAllocations(orderAllocs);
@@ -417,10 +418,8 @@ export default function AdminOrderDetails() {
     () => shipments.find((s) => String(s.shipment_id || "") === String(selectedShipmentId || "")) || null,
     [shipments, selectedShipmentId],
   );
-  const savedCalcMode = String(order?.calculated_selling_price?.mode || "").trim();
-  const savedCalcProfitPct = n(order?.calculated_selling_price?.profit_rate_pct, NaN);
-  const calcMode = savedCalcMode === "purchase" || savedCalcMode === "total" ? savedCalcMode : priceBase;
-  const calcProfitPct = Number.isFinite(savedCalcProfitPct) ? savedCalcProfitPct : n(profitRatePct, 10);
+  const calcMode = priceBase;
+  const calcProfitPct = n(profitRatePct, 10);
   const priceRows = useMemo(() => {
     const allocByItem = {};
     assignedRows.forEach((a) => {
@@ -510,6 +509,52 @@ export default function AdminOrderDetails() {
       };
     });
   }, [priceRows, calcMode, calcProfitPct, selectedShipment]);
+  const priceModeColTotals = useMemo(() => {
+    const rate = n(shipmentAvgRate(selectedShipment), 0);
+    return priceCalculatedRows.reduce(
+      (acc, r) => {
+        acc.itemUnitGbp += n(r.buyUnit, 0);
+        acc.itemUnitBdt += Math.round(n(r.buyUnit, 0) * rate);
+        acc.itemPlusCargoUnitGbp += r2(n(r.buyUnit, 0) + n(r.cargoUnitGbp, 0));
+        acc.itemPlusCargoUnitBdt += Math.round(r2(n(r.buyUnit, 0) + n(r.cargoUnitGbp, 0)) * rate);
+        acc.productWtG += weightKgToG(n(r.upw, 0));
+        acc.packageWtG += weightKgToG(n(r.ukw, 0));
+        acc.totalWtG += weightKgToG(n(r.utw, 0));
+        acc.totalCargoGbp += n(r.cargoTotalGbp, 0);
+        acc.totalItemGbp += n(r.purchaseTotalGbp, 0);
+        acc.totalItemBdt += Math.round(n(r.purchaseTotalGbp, 0) * rate);
+        acc.totalItemPlusCargoGbp += n(r.landedTotalGbp, 0);
+        acc.totalItemPlusCargoBdt += Math.round(n(r.landedTotalGbp, 0) * rate);
+        acc.offeredProductUnitGbp += n(r.offeredProductUnitGbp, 0);
+        acc.offeredProductUnitBdt += n(r.offeredProductUnitBdt, 0);
+        acc.cargoUnitGbp += n(r.cargoUnitGbp, 0);
+        acc.cargoUnitBdt += n(r.cargoUnitBdt, 0);
+        acc.sellingUnitGbp += n(r.sellingUnitGbp, 0);
+        acc.sellingUnitBdt += n(r.sellingUnitBdt, 0);
+        return acc;
+      },
+      {
+        itemUnitGbp: 0,
+        itemUnitBdt: 0,
+        itemPlusCargoUnitGbp: 0,
+        itemPlusCargoUnitBdt: 0,
+        productWtG: 0,
+        packageWtG: 0,
+        totalWtG: 0,
+        totalCargoGbp: 0,
+        totalItemGbp: 0,
+        totalItemBdt: 0,
+        totalItemPlusCargoGbp: 0,
+        totalItemPlusCargoBdt: 0,
+        offeredProductUnitGbp: 0,
+        offeredProductUnitBdt: 0,
+        cargoUnitGbp: 0,
+        cargoUnitBdt: 0,
+        sellingUnitGbp: 0,
+        sellingUnitBdt: 0,
+      },
+    );
+  }, [priceCalculatedRows, selectedShipment]);
   useEffect(() => {
     const baseRate = shipmentAvgRate(selectedShipment);
     setCalcRate(String(baseRate || ""));
@@ -549,12 +594,15 @@ export default function AdminOrderDetails() {
         const offerGbp = r2(n(d.offerGbp, 0));
         const offerBdt = Math.round(n(d.offerBdt, 0));
         if (src === "gbp") {
+          if (isIncompleteNumberInput(d.offerGbp)) return;
           next[id] = syncCalcFields(row, { source: "gbp", offerGbp: String(offerGbp), rateOverride: rate, baseOverride: base });
           next[id].lastEdited = "gbp";
         } else if (src === "bdt") {
+          if (isIncompleteNumberInput(d.offerBdt)) return;
           next[id] = syncCalcFields(row, { source: "bdt", offerBdt: String(offerBdt), rateOverride: rate, baseOverride: base });
           next[id].lastEdited = "bdt";
         } else {
+          if (isIncompleteNumberInput(d.profitPct)) return;
           next[id] = syncCalcFields(row, { source: "pct", profitPct: String(pct), rateOverride: rate, baseOverride: base });
           next[id].lastEdited = "pct";
         }
@@ -570,9 +618,16 @@ export default function AdminOrderDetails() {
       const d = calcDraft[id] || {};
       const saved = itemByOrderItemId[id]?.calculated_selling_price || {};
       const base = calcMode === "total" ? r.buyUnit + r.cargoUnitGbp : r.buyUnit;
-      const pct = n(d.profitPct, n(calcProfitPct, 10));
-      const offerGbp = r2(n(d.offerGbp, r2(base * (1 + pct / 100))));
-      const offerBdt = Math.round(n(d.offerBdt, Math.round(offerGbp * rate)));
+      const defaultPct = n(calcProfitPct, 10);
+      const defaultOfferGbp = r2(base * (1 + defaultPct / 100));
+      const defaultOfferBdt = Math.round(defaultOfferGbp * rate);
+      const pctInput = d.profitPct != null ? String(d.profitPct) : String(defaultPct);
+      const offerGbpInput = d.offerGbp != null ? String(d.offerGbp) : String(defaultOfferGbp.toFixed(2));
+      const offerBdtInput = d.offerBdt != null ? String(d.offerBdt) : String(defaultOfferBdt);
+      const offerGbp = r2(n(offerGbpInput, defaultOfferGbp));
+      const offerBdt = Math.round(n(offerBdtInput, defaultOfferBdt));
+      const finalOfferUnitGbp = calcMode === "purchase" ? r2(offerGbp + r.cargoUnitGbp) : offerGbp;
+      const finalOfferUnitBdt = calcMode === "purchase" ? Math.round(offerBdt + r.cargoUnitBdt) : offerBdt;
       const calcPriceGbp = Number.isFinite(Number(saved?.selling_unit_gbp))
         ? r2(saved.selling_unit_gbp)
         : null;
@@ -581,7 +636,9 @@ export default function AdminOrderDetails() {
         : null;
       return {
         ...r,
-        draft: { profitPct: String(pct), offerGbp: String(offerGbp.toFixed(2)), offerBdt: String(offerBdt) },
+        draft: { profitPct: pctInput, offerGbp: offerGbpInput, offerBdt: offerBdtInput },
+        finalOfferUnitGbp,
+        finalOfferUnitBdt,
         calcPriceGbp,
         calcPriceBdt,
       };
@@ -594,12 +651,16 @@ export default function AdminOrderDetails() {
       const qty = Math.round(n(it?.ordered_quantity, 0));
       const unit =
         currency === "gbp"
-          ? Number.isFinite(Number(cs?.offered_product_unit_gbp))
-            ? r2(cs.offered_product_unit_gbp)
-            : null
-          : Number.isFinite(Number(cs?.offered_product_unit_bdt))
-            ? Math.round(Number(cs.offered_product_unit_bdt))
-            : null;
+          ? Number.isFinite(Number(cs?.selling_unit_gbp))
+            ? r2(cs.selling_unit_gbp)
+            : Number.isFinite(Number(cs?.offered_product_unit_gbp))
+              ? r2(cs.offered_product_unit_gbp)
+              : null
+          : Number.isFinite(Number(cs?.selling_unit_bdt))
+            ? Math.round(Number(cs.selling_unit_bdt))
+            : Number.isFinite(Number(cs?.offered_product_unit_bdt))
+              ? Math.round(Number(cs.offered_product_unit_bdt))
+              : null;
       const total =
         unit == null ? null : currency === "gbp" ? r2(unit * qty) : Math.round(unit * qty);
       return {
@@ -621,55 +682,110 @@ export default function AdminOrderDetails() {
       const cs = it?.calculated_selling_price || {};
       const orderedQty = Math.max(0, Math.round(n(it?.ordered_quantity, 0)));
       const customerChangedQty = Math.max(0, Math.round(n(it?.customer_changed_quantity, orderedQty)));
-      const offeredUnit =
-        negotiationCurrency === "gbp"
-          ? r2(n(cs?.offered_product_unit_gbp, 0))
-          : Math.round(n(cs?.offered_product_unit_bdt, 0));
-      const customerUnit =
-        negotiationCurrency === "gbp"
-          ? r2(n(it?.customer_unit_gbp, offeredUnit))
-          : Math.round(n(it?.customer_unit_bdt, offeredUnit));
-      const finalUnit =
-        negotiationCurrency === "gbp"
-          ? r2(n(it?.final_unit_gbp, offeredUnit))
-          : Math.round(n(it?.final_unit_bdt, offeredUnit));
+      const rate = n(negotiationRate, 0);
+      const cargoUnitGbp = r2(
+        n(
+          cs?.cargo_unit_gbp,
+          rate > 0 ? n(cs?.cargo_unit_bdt, 0) / rate : 0,
+        ),
+      );
+      const cargoUnitBdt = Math.round(
+        n(
+          cs?.cargo_unit_bdt,
+          rate > 0 ? cargoUnitGbp * rate : 0,
+        ),
+      );
+      const buyUnitGbp = r2(n(it?.buy_price_gbp, 0));
+      const baseUnitCostGbp = r2(buyUnitGbp + cargoUnitGbp);
+      const baseUnitCostBdt = Math.round(baseUnitCostGbp * rate);
+      const offeredUnitGbp = r2(
+        n(
+          cs?.selling_unit_gbp,
+          rate > 0 ? n(cs?.selling_unit_bdt, n(cs?.offered_product_unit_bdt, 0)) / rate : n(cs?.offered_product_unit_gbp, 0),
+        ),
+      );
+      const offeredUnitBdt = Math.round(
+        n(
+          cs?.selling_unit_bdt,
+          rate > 0 ? offeredUnitGbp * rate : n(cs?.offered_product_unit_bdt, 0),
+        ),
+      );
+      const customerUnitGbp = r2(
+        n(
+          it?.customer_unit_gbp,
+          rate > 0 ? n(it?.customer_unit_bdt, offeredUnitBdt) / rate : offeredUnitGbp,
+        ),
+      );
+      const customerUnitBdt = Math.round(
+        n(
+          it?.customer_unit_bdt,
+          rate > 0 ? customerUnitGbp * rate : offeredUnitBdt,
+        ),
+      );
+      const finalUnitGbp = r2(
+        n(
+          it?.final_unit_gbp,
+          rate > 0 ? n(it?.final_unit_bdt, customerUnitBdt) / rate : customerUnitGbp,
+        ),
+      );
+      const finalUnitBdt = Math.round(
+        n(
+          it?.final_unit_bdt,
+          rate > 0 ? finalUnitGbp * rate : customerUnitBdt,
+        ),
+      );
       const finalQty = Math.max(0, Math.round(n(it?.final_quantity, customerChangedQty)));
       return {
         order_item_id: id,
         name: it?.name || "Item",
         image_url: it?.image_url || "",
         buy_price_gbp: r2(n(it?.buy_price_gbp, 0)),
+        cargoUnitGbp,
+        cargoUnitBdt,
+        baseUnitCostGbp,
+        baseUnitCostBdt,
         orderedQty,
         customerChangedQty,
-        offeredUnit,
-        customerUnit,
-        finalUnit,
+        offeredUnitGbp,
+        offeredUnitBdt,
+        customerUnitGbp,
+        customerUnitBdt,
+        finalUnitGbp,
+        finalUnitBdt,
         finalQty,
       };
     });
   }, [items, negotiationCurrency, negotiationRate]);
   const negotiationTotals = useMemo(() => {
-    const purchaseTotalGbp = negotiationRows.reduce(
-      (acc, r) => acc + r2(n(r.buy_price_gbp, 0) * n(r.finalQty, 0)),
+    const baseTotalCostGbp = negotiationRows.reduce(
+      (acc, r) => acc + r2(n(r.baseUnitCostGbp, 0) * n(r.finalQty, 0)),
       0,
     );
-    const finalTotal = negotiationRows.reduce(
-      (acc, r) => acc + n(r.finalUnit, 0) * n(r.finalQty, 0),
+    const baseTotalCostBdt = negotiationRows.reduce(
+      (acc, r) => acc + Math.round(n(r.baseUnitCostBdt, 0) * n(r.finalQty, 0)),
       0,
     );
-    const purchaseBase = negotiationCurrency === "gbp"
-      ? purchaseTotalGbp
-      : Math.round(purchaseTotalGbp * n(negotiationRate, 0));
-    const profit = finalTotal - purchaseBase;
-    const profitPct = purchaseBase > 0 ? r2((profit / purchaseBase) * 100) : 0;
+    const finalTotalGbp = negotiationRows.reduce(
+      (acc, r) => acc + n(r.finalUnitGbp, 0) * n(r.finalQty, 0),
+      0,
+    );
+    const finalTotalBdt = negotiationRows.reduce(
+      (acc, r) => acc + n(r.finalUnitBdt, 0) * n(r.finalQty, 0),
+      0,
+    );
+    const profitGbp = finalTotalGbp - baseTotalCostGbp;
+    const profitBdt = finalTotalBdt - baseTotalCostBdt;
+    const profitPct = baseTotalCostBdt > 0 ? r2((profitBdt / baseTotalCostBdt) * 100) : 0;
     return {
-      purchaseTotalGbp: r2(purchaseTotalGbp),
-      purchaseBase: negotiationCurrency === "gbp" ? r2(purchaseBase) : Math.round(purchaseBase),
-      finalTotal: negotiationCurrency === "gbp" ? r2(finalTotal) : Math.round(finalTotal),
-      profit: negotiationCurrency === "gbp" ? r2(profit) : Math.round(profit),
+      baseTotalCostGbp: r2(baseTotalCostGbp),
+      baseTotalCostBdt: Math.round(baseTotalCostBdt),
+      finalTotalGbp: r2(finalTotalGbp),
+      finalTotalBdt: Math.round(finalTotalBdt),
+      profitGbp: r2(profitGbp),
+      profitBdt: Math.round(profitBdt),
       profitPct,
     };
-  }, [negotiationRows, negotiationCurrency, negotiationRate]);
+  }, [negotiationRows, negotiationRate]);
   useEffect(() => {
     setNegotiationDraft((prev) => {
       const next = { ...prev };
@@ -679,7 +795,7 @@ export default function AdminOrderDetails() {
         if (!next[id]) {
           next[id] = {
             finalQty: String(r.finalQty),
-            finalUnit: String(r.finalUnit),
+            finalUnit: String(negotiationCurrency === "gbp" ? r.finalUnitGbp : r.finalUnitBdt),
           };
         }
       });
@@ -738,28 +854,49 @@ export default function AdminOrderDetails() {
 
   function updateCalcPct(row, pctRaw) {
     const id = String(row.order_item_id || "");
+    if (isIncompleteNumberInput(pctRaw)) {
+      setCalcDraft((p) => ({
+        ...p,
+        [id]: { ...(p[id] || {}), profitPct: String(pctRaw), lastEdited: "pct" },
+      }));
+      return;
+    }
     const synced = syncCalcFields(row, { source: "pct", profitPct: pctRaw });
     setCalcDraft((p) => ({
       ...p,
-      [id]: { ...(p[id] || {}), ...synced, lastEdited: "pct" },
+      [id]: { ...(p[id] || {}), ...synced, profitPct: String(pctRaw), lastEdited: "pct" },
     }));
   }
 
   function updateCalcOfferGbp(row, gbpRaw) {
     const id = String(row.order_item_id || "");
+    if (isIncompleteNumberInput(gbpRaw)) {
+      setCalcDraft((p) => ({
+        ...p,
+        [id]: { ...(p[id] || {}), offerGbp: String(gbpRaw), lastEdited: "gbp" },
+      }));
+      return;
+    }
     const synced = syncCalcFields(row, { source: "gbp", offerGbp: gbpRaw });
     setCalcDraft((p) => ({
       ...p,
-      [id]: { ...(p[id] || {}), ...synced, lastEdited: "gbp" },
+      [id]: { ...(p[id] || {}), ...synced, offerGbp: String(gbpRaw), lastEdited: "gbp" },
     }));
   }
 
   function updateCalcOfferBdt(row, bdtRaw) {
     const id = String(row.order_item_id || "");
+    if (isIncompleteNumberInput(bdtRaw)) {
+      setCalcDraft((p) => ({
+        ...p,
+        [id]: { ...(p[id] || {}), offerBdt: String(bdtRaw), lastEdited: "bdt" },
+      }));
+      return;
+    }
     const synced = syncCalcFields(row, { source: "bdt", offerBdt: bdtRaw });
     setCalcDraft((p) => ({
       ...p,
-      [id]: { ...(p[id] || {}), ...synced, lastEdited: "bdt" },
+      [id]: { ...(p[id] || {}), ...synced, offerBdt: String(bdtRaw), lastEdited: "bdt" },
     }));
   }
 
@@ -851,6 +988,7 @@ export default function AdminOrderDetails() {
     try {
       const offerGbp = r2(n(row?.draft?.offerGbp, 0));
       const offerBdt = Math.round(n(row?.draft?.offerBdt, 0));
+      const buyUnitGbp = r2(n(row?.buyUnit, 0));
       const cargoGbp = r2(n(row?.cargoUnitGbp, 0));
       const cargoBdt = Math.round(n(row?.cargoUnitBdt, 0));
       const sellingGbp = calcMode === "purchase" ? r2(offerGbp + cargoGbp) : offerGbp;
@@ -863,6 +1001,20 @@ export default function AdminOrderDetails() {
         rows: [
           {
             order_item_id: id,
+            initial_unit_gbp: buyUnitGbp,
+            initial_unit_bdt: Math.round(buyUnitGbp * n(calcRate, shipmentAvgRate(selectedShipment))),
+            initial_plus_cargo_unit_gbp: r2(buyUnitGbp + cargoGbp),
+            initial_plus_cargo_unit_bdt: Math.round(
+              r2(buyUnitGbp + cargoGbp) * n(calcRate, shipmentAvgRate(selectedShipment)),
+            ),
+            calculated_offer_unit_gbp: sellingGbp,
+            calculated_offer_unit_bdt: sellingBdt,
+            offer_unit_gbp: offerGbp,
+            offer_unit_bdt: offerBdt,
+            customer_counter_unit_gbp: itemByOrderItemId[id]?.customer_unit_gbp ?? null,
+            customer_counter_unit_bdt: itemByOrderItemId[id]?.customer_unit_bdt ?? null,
+            final_unit_gbp: itemByOrderItemId[id]?.final_unit_gbp ?? null,
+            final_unit_bdt: itemByOrderItemId[id]?.final_unit_bdt ?? null,
             offered_product_unit_gbp: offerGbp,
             offered_product_unit_bdt: offerBdt,
             cargo_unit_gbp: cargoGbp,
@@ -893,24 +1045,46 @@ export default function AdminOrderDetails() {
   }
 
   async function saveCalculatedPrice() {
-    if (!orderId || !priceCalculatedRows.length) return;
+    if (!orderId || !calcRows.length) return;
     setSavingCalculatedPrice(true);
     setCalculatedPriceMsg("");
     try {
-      const rows = priceCalculatedRows.map((r) => ({
-        order_item_id: r.order_item_id,
-        offered_product_unit_gbp: r.offeredProductUnitGbp,
-        offered_product_unit_bdt: r.offeredProductUnitBdt,
-        cargo_unit_gbp: r.cargoUnitGbp,
-        cargo_unit_bdt: r.cargoUnitBdt,
-        selling_unit_gbp: r.sellingUnitGbp,
-        selling_unit_bdt: r.sellingUnitBdt,
-      }));
+      const rate = n(calcRate, shipmentAvgRate(selectedShipment));
+      const rows = calcRows.map((r) => {
+        const offerGbp = r2(n(r?.draft?.offerGbp, r.offeredProductUnitGbp));
+        const offerBdt = Math.round(n(r?.draft?.offerBdt, r.offeredProductUnitBdt));
+        const sellingGbp = calcMode === "purchase" ? r2(offerGbp + n(r.cargoUnitGbp, 0)) : offerGbp;
+        const sellingBdt = calcMode === "purchase" ? Math.round(offerBdt + n(r.cargoUnitBdt, 0)) : offerBdt;
+        return {
+          order_item_id: r.order_item_id,
+          initial_unit_gbp: r.buyUnit,
+          initial_unit_bdt: Math.round(r.buyUnit * rate),
+          initial_plus_cargo_unit_gbp: r2(r.buyUnit + r.cargoUnitGbp),
+          initial_plus_cargo_unit_bdt: Math.round(
+            r2(r.buyUnit + r.cargoUnitGbp) * rate,
+          ),
+          calculated_offer_unit_gbp: sellingGbp,
+          calculated_offer_unit_bdt: sellingBdt,
+          offer_unit_gbp: offerGbp,
+          offer_unit_bdt: offerBdt,
+          customer_counter_unit_gbp: itemByOrderItemId[r.order_item_id]?.customer_unit_gbp ?? null,
+          customer_counter_unit_bdt: itemByOrderItemId[r.order_item_id]?.customer_unit_bdt ?? null,
+          final_unit_gbp: itemByOrderItemId[r.order_item_id]?.final_unit_gbp ?? null,
+          final_unit_bdt: itemByOrderItemId[r.order_item_id]?.final_unit_bdt ?? null,
+          offered_product_unit_gbp: offerGbp,
+          offered_product_unit_bdt: offerBdt,
+          cargo_unit_gbp: r.cargoUnitGbp,
+          cargo_unit_bdt: r.cargoUnitBdt,
+          selling_unit_gbp: sellingGbp,
+          selling_unit_bdt: sellingBdt,
+        };
+      });
       await saveCalculatedSellingPrices({
         order_id: orderId,
         price_mode: priceBase,
         profit_rate_pct: Number(profitRatePct || 0),
         customer_price_currency: customerPriceCurrency,
+        update_order_meta: false,
         rows,
       });
       const refreshed = await getOrderItemsForViewer({
@@ -978,6 +1152,21 @@ export default function AdminOrderDetails() {
     role: "admin",
     includeCurrent: true,
   });
+  const canOpenNegotiateTab = useMemo(() => {
+    if (!items.length) return false;
+    return items.every((it) => {
+      const cs = it?.calculated_selling_price || {};
+      const hasGbp = Number.isFinite(Number(cs?.offered_product_unit_gbp));
+      const hasBdt = Number.isFinite(Number(cs?.offered_product_unit_bdt));
+      return hasGbp || hasBdt;
+    });
+  }, [items]);
+
+  useEffect(() => {
+    if (tab === "negotiate" && !canOpenNegotiateTab) {
+      setTab("calculate");
+    }
+  }, [tab, canOpenNegotiateTab]);
 
   return (
     <div className="mx-auto w-full max-w-6xl p-4 md:p-6">
@@ -1025,7 +1214,13 @@ export default function AdminOrderDetails() {
         <Button variant={tab === "calculate" ? "default" : "outline"} size="sm" onClick={() => setTab("calculate")}>
           Calculate Price
         </Button>
-        <Button variant={tab === "negotiate" ? "default" : "outline"} size="sm" onClick={() => setTab("negotiate")}>
+        <Button
+          variant={tab === "negotiate" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setTab("negotiate")}
+          disabled={!canOpenNegotiateTab}
+          title={!canOpenNegotiateTab ? "Complete Calculate Price first" : "Negotiate & Finalize"}
+        >
           Negotiate & Finalize
         </Button>
       </div>
@@ -1307,7 +1502,7 @@ export default function AdminOrderDetails() {
                       Apply On Total Price
                     </Button>
                     <div className="text-xs text-muted-foreground">
-                      Avg Rate: {shipmentAvgRate(selectedShipment)} • Cargo/KG: {gbp(selectedShipment?.cargo_cost_per_kg)}
+                      Shipment Avg Rate: {shipmentAvgRate(selectedShipment)} • Cargo/KG: {gbp(selectedShipment?.cargo_cost_per_kg)}
                     </div>
                     {priceEditMode ? (
                       <Button onClick={saveCalculatedPrice} disabled={savingCalculatedPrice || !priceCalculatedRows.length}>
@@ -1321,6 +1516,17 @@ export default function AdminOrderDetails() {
                   </div>
                 </div>
                 {calculatedPriceMsg ? <div className="rounded-lg border px-3 py-2 text-sm">{calculatedPriceMsg}</div> : null}
+                <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+                  Changing <span className="font-semibold">Price Mode</span> recalculates preview instantly in FE. Values are saved to DB only when you click <span className="font-semibold">Save Calculated Selling Price</span>.
+                </div>
+                <div className="rounded-lg border px-3 py-2 text-xs">
+                  <span className="text-muted-foreground">Profit Rule: </span>
+                  <span className="font-semibold">
+                    {calcMode === "purchase"
+                      ? "(Item x rate) + Item + Cargo"
+                      : "(Item+Cargo) x rate + (Item+Cargo)"}
+                  </span>
+                </div>
 
                 <div className="text-xs text-muted-foreground">
                   Weights shown in g. Cargo = total weight (kg) x shipment cargo cost per kg.
@@ -1330,25 +1536,38 @@ export default function AdminOrderDetails() {
                   <table className="min-w-full text-xs">
                     <thead className="bg-muted/40 text-muted-foreground">
                       <tr className="text-left">
+                        <th className="px-3 py-1" colSpan={9}>Cost Section</th>
+                        <th className="bg-primary/10 px-3 py-1 text-primary" colSpan={2}>Offer Section</th>
+                      </tr>
+                      <tr className="text-left">
                         <th className="px-3 py-2">Product</th>
                         <th className="px-3 py-2">Needed</th>
-                        <th className="px-3 py-2">Purchase / Unit</th>
-                        <th className="px-3 py-2">Product Wt (g)</th>
-                        <th className="px-3 py-2">Package Wt (g)</th>
-                        <th className="px-3 py-2">Total Wt (g)</th>
+                        <th className="px-3 py-2">Weight (g)</th>
+                        <th className="px-3 py-2">Item / Unit</th>
+                        <th className="px-3 py-2">Cargo / Unit</th>
+                        <th className="px-3 py-2">Item+Cargo / Unit</th>
+                        <th className="px-3 py-2">Total Item</th>
                         <th className="px-3 py-2">Total Cargo</th>
-                        <th className="px-3 py-2">Total Purchase</th>
-                        <th className="px-3 py-2">Total (Purchase+Cargo)</th>
-                        <th className="px-3 py-2">Offered Product / Unit (GBP)</th>
-                        <th className="px-3 py-2">Offered Product / Unit (BDT)</th>
-                        <th className="px-3 py-2">Cargo / Unit (GBP)</th>
-                        <th className="px-3 py-2">Cargo / Unit (BDT)</th>
-                        <th className="px-3 py-2">Selling / Unit (GBP)</th>
-                        <th className="px-3 py-2">Selling / Unit (BDT)</th>
+                        <th className="px-3 py-2">Total Cost</th>
+                        <th className="bg-primary/5 px-3 py-2 text-primary">Calculated Offer / Unit</th>
+                        <th className="bg-primary/5 px-3 py-2 text-primary">Calculated Total / Unit</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {priceCalculatedRows.map((r) => {
+                        const rate = n(calcRate, shipmentAvgRate(selectedShipment));
+                        const itemUnitGbp = r2(r.buyUnit);
+                        const itemUnitBdt = Math.round(itemUnitGbp * rate);
+                        const cargoUnitGbp = r2(r.cargoUnitGbp);
+                        const cargoUnitBdt = Math.round(cargoUnitGbp * rate);
+                        const itemPlusCargoUnitGbp = r2(itemUnitGbp + cargoUnitGbp);
+                        const itemPlusCargoUnitBdt = Math.round(itemPlusCargoUnitGbp * rate);
+                        const totalItemGbp = r2(r.purchaseTotalGbp);
+                        const totalItemBdt = Math.round(totalItemGbp * rate);
+                        const totalCargoGbp = r2(r.cargoTotalGbp);
+                        const totalCargoBdt = Math.round(totalCargoGbp * rate);
+                        const totalCostGbp = r2(r.landedTotalGbp);
+                        const totalCostBdt = Math.round(totalCostGbp * rate);
                         return (
                           <tr key={r.order_item_id}>
                             <td className="px-3 py-2">
@@ -1360,42 +1579,45 @@ export default function AdminOrderDetails() {
                               </div>
                             </td>
                             <td className="px-3 py-2">{Math.round(r.qty)}</td>
-                            <td className="px-3 py-2">{gbp(r.buyUnit)}</td>
-                            <td className="px-3 py-2">{weightKgToG(r.upw)}</td>
-                            <td className="px-3 py-2">{weightKgToG(r.ukw)}</td>
-                            <td className="px-3 py-2">{weightKgToG(r.utw)}</td>
-                            <td className="px-3 py-2">{gbp(r.cargoTotalGbp)}</td>
-                            <td className="px-3 py-2">{gbp(r.purchaseTotalGbp)}</td>
-                            <td className="px-3 py-2">{gbp(r.landedTotalGbp)}</td>
-                            <td className="px-3 py-2">{gbp(r.offeredProductUnitGbp)}</td>
-                            <td className="px-3 py-2">{bdt(r.offeredProductUnitBdt)}</td>
-                            <td className="px-3 py-2">{gbp(r.cargoUnitGbp)}</td>
-                            <td className="px-3 py-2">{bdt(r.cargoUnitBdt)}</td>
-                            <td className="px-3 py-2">{gbp(r.sellingUnitGbp)}</td>
-                            <td className="px-3 py-2">{bdt(r.sellingUnitBdt)}</td>
+                            <td className="px-3 py-2">
+                              <div>P {weightKgToG(r.upw)}</div>
+                              <div>Pkg {weightKgToG(r.ukw)}</div>
+                              <div>T {weightKgToG(r.utw)}</div>
+                            </td>
+                            <td className="px-3 py-2"><div>{gbp(itemUnitGbp)}</div><div>{bdt(itemUnitBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(cargoUnitGbp)}</div><div>{bdt(cargoUnitBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(itemPlusCargoUnitGbp)}</div><div>{bdt(itemPlusCargoUnitBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(totalItemGbp)}</div><div>{bdt(totalItemBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(totalCargoGbp)}</div><div>{bdt(totalCargoBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(totalCostGbp)}</div><div>{bdt(totalCostBdt)}</div></td>
+                            <td className="bg-primary/5 px-3 py-2"><div>{gbp(r.offeredProductUnitGbp)}</div><div>{bdt(r.offeredProductUnitBdt)}</div></td>
+                            <td className="bg-primary/5 px-3 py-2"><div>{gbp(r.sellingUnitGbp)}</div><div>{bdt(r.sellingUnitBdt)}</div></td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
-                      <tr className="bg-muted/30 font-semibold">
-                        <td className="px-3 py-2">Total</td>
-                        <td className="px-3 py-2">{Math.round(priceTotals.qty)}</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">{gbp(priceTotals.cargo)}</td>
-                        <td className="px-3 py-2">{gbp(priceTotals.purchase)}</td>
-                        <td className="px-3 py-2">{gbp(priceTotals.landed)}</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                        <td className="px-3 py-2">-</td>
-                      </tr>
+                      {(() => {
+                        return (
+                          <tr className="bg-muted/30 font-semibold">
+                            <td className="px-3 py-2">Total</td>
+                            <td className="px-3 py-2">{Math.round(priceTotals.qty)}</td>
+                            <td className="px-3 py-2">
+                              <div>P {Math.round(priceModeColTotals.productWtG)}</div>
+                              <div>Pkg {Math.round(priceModeColTotals.packageWtG)}</div>
+                              <div>T {Math.round(priceModeColTotals.totalWtG)}</div>
+                            </td>
+                            <td className="px-3 py-2"><div>{gbp(priceModeColTotals.itemUnitGbp)}</div><div>{bdt(priceModeColTotals.itemUnitBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(priceModeColTotals.cargoUnitGbp)}</div><div>{bdt(priceModeColTotals.cargoUnitBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(priceModeColTotals.itemPlusCargoUnitGbp)}</div><div>{bdt(priceModeColTotals.itemPlusCargoUnitBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(priceModeColTotals.totalItemGbp)}</div><div>{bdt(priceModeColTotals.totalItemBdt)}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(priceModeColTotals.totalCargoGbp)}</div><div>{bdt(Math.round(priceModeColTotals.totalCargoGbp * n(shipmentAvgRate(selectedShipment), 0)))}</div></td>
+                            <td className="px-3 py-2"><div>{gbp(priceModeColTotals.totalItemPlusCargoGbp)}</div><div>{bdt(priceModeColTotals.totalItemPlusCargoBdt)}</div></td>
+                            <td className="bg-primary/10 px-3 py-2"><div>{gbp(priceModeColTotals.offeredProductUnitGbp)}</div><div>{bdt(priceModeColTotals.offeredProductUnitBdt)}</div></td>
+                            <td className="bg-primary/10 px-3 py-2"><div>{gbp(priceModeColTotals.sellingUnitGbp)}</div><div>{bdt(priceModeColTotals.sellingUnitBdt)}</div></td>
+                          </tr>
+                        );
+                      })()}
                     </tfoot>
                   </table>
                 </div>
@@ -1409,22 +1631,27 @@ export default function AdminOrderDetails() {
             <CardTitle className="text-base">Negotiate & Finalize</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!canOpenNegotiateTab ? (
+              <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+                Complete <span className="font-semibold">Calculate Price</span> first to unlock this tab.
+              </div>
+            ) : (
+              <>
             <div className="grid gap-2 md:grid-cols-4">
               <div className="rounded-lg border p-3 text-sm">
-                <div className="text-xs text-muted-foreground">Purchase Total (GBP)</div>
-                <div className="font-semibold">{gbp(negotiationTotals.purchaseTotalGbp)}</div>
+                <div className="text-xs text-muted-foreground">Total Item Cost (Item + Cargo)</div>
+                <div className="font-semibold">{gbp(negotiationTotals.baseTotalCostGbp)}</div>
+                <div className="text-xs text-muted-foreground">{bdt(negotiationTotals.baseTotalCostBdt)}</div>
               </div>
               <div className="rounded-lg border p-3 text-sm">
-                <div className="text-xs text-muted-foreground">Final Total ({negotiationCurrency.toUpperCase()})</div>
-                <div className="font-semibold">
-                  {negotiationCurrency === "gbp" ? gbp(negotiationTotals.finalTotal) : bdt(negotiationTotals.finalTotal)}
-                </div>
+                <div className="text-xs text-muted-foreground">Final Total</div>
+                <div className="font-semibold">{gbp(negotiationTotals.finalTotalGbp)}</div>
+                <div className="text-xs text-muted-foreground">{bdt(negotiationTotals.finalTotalBdt)}</div>
               </div>
               <div className="rounded-lg border p-3 text-sm">
-                <div className="text-xs text-muted-foreground">Profit ({negotiationCurrency.toUpperCase()})</div>
-                <div className="font-semibold">
-                  {negotiationCurrency === "gbp" ? gbp(negotiationTotals.profit) : bdt(negotiationTotals.profit)}
-                </div>
+                <div className="text-xs text-muted-foreground">Profit</div>
+                <div className="font-semibold">{gbp(negotiationTotals.profitGbp)}</div>
+                <div className="text-xs text-muted-foreground">{bdt(negotiationTotals.profitBdt)}</div>
               </div>
               <div className="rounded-lg border p-3 text-sm">
                 <div className="text-xs text-muted-foreground">Profit Rate</div>
@@ -1477,19 +1704,26 @@ export default function AdminOrderDetails() {
                   {negotiationRows.map((r) => {
                     const id = String(r.order_item_id || "");
                     const isEditable = negotiationRowEdit[id] ?? true;
-                    const pct = (sell) => {
-                      const base = n(r.buy_price_gbp, 0);
-                      const sRaw = n(sell, 0);
-                      const s =
-                        negotiationCurrency === "gbp"
-                          ? sRaw
-                          : n(negotiationRate, 0) > 0
-                            ? sRaw / n(negotiationRate, 0)
-                            : 0;
+                    const pct = (sellGbp, sellBdt) => {
+                      const base = n(r.baseUnitCostBdt, 0);
+                      const s = n(sellBdt, 0) || Math.round(n(sellGbp, 0) * n(negotiationRate, 0));
                       if (!(base > 0) || !(s > 0)) return "-";
                       return `${r2(((s - base) / base) * 100)}%`;
                     };
-                    const finalUnitDraft = n(negotiationDraft[id]?.finalUnit, r.finalUnit);
+                    const finalUnitDraft = n(
+                      negotiationDraft[id]?.finalUnit,
+                      negotiationCurrency === "gbp" ? r.finalUnitGbp : r.finalUnitBdt,
+                    );
+                    const finalUnitDraftGbp =
+                      negotiationCurrency === "gbp"
+                        ? finalUnitDraft
+                        : n(negotiationRate, 0) > 0
+                          ? finalUnitDraft / n(negotiationRate, 0)
+                          : 0;
+                    const finalUnitDraftBdt =
+                      negotiationCurrency === "bdt"
+                        ? finalUnitDraft
+                        : Math.round(finalUnitDraft * n(negotiationRate, 0));
                     return (
                       <tr key={id}>
                         <td className="px-3 py-2">
@@ -1503,12 +1737,13 @@ export default function AdminOrderDetails() {
                         <td className="px-3 py-2">{r.orderedQty}</td>
                         <td className="px-3 py-2">{r.customerChangedQty}</td>
                         <td className="px-3 py-2">
-                          <div>{negotiationCurrency === "gbp" ? gbp(r.offeredUnit) : bdt(r.offeredUnit)}</div>
-                          <div className="text-[10px] text-muted-foreground">Profit {pct(r.offeredUnit)}</div>
+                          <div>{gbp(r.offeredUnitGbp)}</div>
+                          <div className="text-[10px] text-muted-foreground">{bdt(r.offeredUnitBdt)}</div>
+                          <div className="text-[10px] text-muted-foreground">Profit {pct(r.offeredUnitGbp, r.offeredUnitBdt)}</div>
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-1">
-                            <span>{negotiationCurrency === "gbp" ? gbp(r.customerUnit) : bdt(r.customerUnit)}</span>
+                            <span>{gbp(r.customerUnitGbp)} / {bdt(r.customerUnitBdt)}</span>
                             <Button
                               size="sm"
                               variant="outline"
@@ -1516,7 +1751,10 @@ export default function AdminOrderDetails() {
                               onClick={() =>
                                 setNegotiationDraft((p) => ({
                                   ...p,
-                                  [id]: { ...(p[id] || {}), finalUnit: String(r.customerUnit) },
+                                  [id]: {
+                                    ...(p[id] || {}),
+                                    finalUnit: String(negotiationCurrency === "gbp" ? r.customerUnitGbp : r.customerUnitBdt),
+                                  },
                                 }))
                               }
                               disabled={!isEditable}
@@ -1524,7 +1762,7 @@ export default function AdminOrderDetails() {
                               Accept
                             </Button>
                           </div>
-                          <div className="text-[10px] text-muted-foreground">Profit {pct(r.customerUnit)}</div>
+                          <div className="text-[10px] text-muted-foreground">Profit {pct(r.customerUnitGbp, r.customerUnitBdt)}</div>
                         </td>
                         <td className="px-3 py-2">
                           <input
@@ -1543,7 +1781,10 @@ export default function AdminOrderDetails() {
                         <td className="px-3 py-2">
                           <input
                             className="h-8 w-28 rounded-md border bg-background px-2"
-                            value={String(negotiationDraft[id]?.finalUnit ?? r.finalUnit)}
+                            value={String(
+                              negotiationDraft[id]?.finalUnit ??
+                                (negotiationCurrency === "gbp" ? r.finalUnitGbp : r.finalUnitBdt),
+                            )}
                             onChange={(e) =>
                               setNegotiationDraft((p) => ({
                                 ...p,
@@ -1553,7 +1794,10 @@ export default function AdminOrderDetails() {
                             disabled={!isEditable}
                             inputMode="decimal"
                           />
-                          <div className="mt-1 text-[10px] text-muted-foreground">Profit {pct(finalUnitDraft)}</div>
+                          <div className="mt-1 text-[10px] text-muted-foreground">
+                            {gbp(finalUnitDraftGbp)} / {bdt(finalUnitDraftBdt)}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">Profit {pct(finalUnitDraftGbp, finalUnitDraftBdt)}</div>
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-1">
@@ -1604,6 +1848,8 @@ export default function AdminOrderDetails() {
                 </tbody>
               </table>
             </div>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -1716,6 +1962,7 @@ export default function AdminOrderDetails() {
                       <th className="px-3 py-2">Purchase / Unit (GBP)</th>
                       <th className="px-3 py-2">Calculated Price (GBP)</th>
                       <th className="px-3 py-2">Calculated Price (BDT)</th>
+                      <th className="px-3 py-2">Calculated Total / Unit (Final Offer)</th>
                       <th className="px-3 py-2">Offer Price (GBP)</th>
                       <th className="px-3 py-2">Offer Price (BDT)</th>
                       <th className="px-3 py-2">Profit (%)</th>
@@ -1743,6 +1990,10 @@ export default function AdminOrderDetails() {
                         <td className="px-3 py-2">{gbp(r.buyUnit)}</td>
                         <td className="px-3 py-2">{r.calcPriceGbp == null ? "-" : gbp(r.calcPriceGbp)}</td>
                         <td className="px-3 py-2">{r.calcPriceBdt == null ? "-" : bdt(r.calcPriceBdt)}</td>
+                        <td className="px-3 py-2">
+                          <div>{gbp(r.finalOfferUnitGbp)}</div>
+                          <div>{bdt(r.finalOfferUnitBdt)}</div>
+                        </td>
                         <td className="px-3 py-2">
                           <input
                             className="h-8 w-28 rounded-md border bg-background px-2"

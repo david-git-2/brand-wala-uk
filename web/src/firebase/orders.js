@@ -30,7 +30,7 @@ const ADMIN_STATUS_TRANSITIONS = {
   submitted: ["priced", "cancelled"],
   priced: ["under_review", "finalized", "submitted", "cancelled"],
   under_review: ["priced", "finalized", "cancelled"],
-  finalized: ["processing", "cancelled"],
+  finalized: ["under_review", "processing", "cancelled"],
   processing: ["partially_delivered", "delivered", "cancelled"],
   partially_delivered: ["processing", "delivered", "cancelled"],
   delivered: [],
@@ -120,6 +120,7 @@ function toOrderItemRow(data, id) {
     buy_price_gbp: n(data?.buy_price_gbp),
     line_purchase_value_gbp: n(data?.line_purchase_value_gbp),
     calculated_selling_price: data?.calculated_selling_price || null,
+    pricing_snapshot: data?.pricing_snapshot || null,
     customer_offer: data?.customer_offer || null,
     customer_unit_gbp: data?.customer_unit_gbp,
     customer_unit_bdt: data?.customer_unit_bdt,
@@ -281,6 +282,36 @@ export async function saveCalculatedSellingPrices({
     batch.set(
       itemRef,
       {
+        pricing_snapshot: {
+          // Initial purchase unit price
+          initial_unit_gbp: r2(r.initial_unit_gbp),
+          initial_unit_bdt: Math.round(n(r.initial_unit_bdt)),
+          // Initial purchase + cargo unit price
+          initial_plus_cargo_unit_gbp: r2(
+            r.initial_plus_cargo_unit_gbp ?? (n(r.initial_unit_gbp) + n(r.cargo_unit_gbp)),
+          ),
+          initial_plus_cargo_unit_bdt: Math.round(
+            n(r.initial_plus_cargo_unit_bdt),
+          ),
+          // System-calculated offer (before manual override)
+          calculated_offer_unit_gbp: r2(
+            r.calculated_offer_unit_gbp ?? r.selling_unit_gbp,
+          ),
+          calculated_offer_unit_bdt: Math.round(
+            n(r.calculated_offer_unit_bdt, r.selling_unit_bdt),
+          ),
+          // Current offer shown to customer
+          offer_unit_gbp: r2(r.offer_unit_gbp ?? r.offered_product_unit_gbp),
+          offer_unit_bdt: Math.round(
+            n(r.offer_unit_bdt, r.offered_product_unit_bdt),
+          ),
+          // Customer counter + final (kept in sync from dedicated APIs too)
+          customer_counter_unit_gbp: r.customer_counter_unit_gbp ?? null,
+          customer_counter_unit_bdt: r.customer_counter_unit_bdt ?? null,
+          final_unit_gbp: r.final_unit_gbp ?? null,
+          final_unit_bdt: r.final_unit_bdt ?? null,
+          updated_at: serverTimestamp(),
+        },
         calculated_selling_price: {
           mode,
           profit_rate_pct: pct,
@@ -463,6 +494,12 @@ export async function saveCustomerOfferItem({
         updated_at: serverTimestamp(),
       },
       ...(ccy === "gbp" ? { customer_unit_gbp: unit } : { customer_unit_bdt: unit }),
+      pricing_snapshot: {
+        ...(ccy === "gbp"
+          ? { customer_counter_unit_gbp: unit }
+          : { customer_counter_unit_bdt: unit }),
+        updated_at: serverTimestamp(),
+      },
       ...(customer_changed_quantity !== undefined
         ? { customer_changed_quantity: Math.max(0, Math.round(n(customer_changed_quantity, 0))) }
         : {}),
@@ -504,6 +541,11 @@ export async function saveAdminFinalNegotiationItem({
       final_quantity: qty,
       final_unit_gbp: unitGbp,
       final_unit_bdt: unitBdt,
+      pricing_snapshot: {
+        final_unit_gbp: unitGbp,
+        final_unit_bdt: unitBdt,
+        updated_at: serverTimestamp(),
+      },
       final_line_gbp: r2(unitGbp * qty),
       final_line_bdt: Math.round(unitBdt * qty),
       ...(note !== undefined ? { final_note: String(note || "").trim() } : {}),
@@ -523,5 +565,30 @@ export async function deleteOrderItemAdmin({ order_id, order_item_id }) {
 
   await deleteDoc(doc(firestoreDb, "orders", oid, "items", itemId));
   await recomputeOrderHeaderTotals(oid);
+  return { success: true };
+}
+
+export async function deleteOrderAdmin({ order_id }) {
+  const oid = String(order_id || "").trim();
+  if (!oid) throw new Error("Missing order_id");
+
+  const orderRef = doc(firestoreDb, "orders", oid);
+  const orderSnap = await getDoc(orderRef);
+  if (!orderSnap.exists()) throw new Error("Order not found");
+  const status = String(orderSnap.data()?.status || "").toLowerCase();
+  if (status !== "cancelled") {
+    throw new Error("Only cancelled orders can be deleted");
+  }
+
+  const itemsSnap = await getDocs(collection(firestoreDb, "orders", oid, "items"));
+  const allocSnap = await getDocs(
+    query(collection(firestoreDb, "shipment_allocations"), where("order_id", "==", oid)),
+  );
+
+  await Promise.all([
+    ...itemsSnap.docs.map((d) => deleteDoc(d.ref)),
+    ...allocSnap.docs.map((d) => deleteDoc(d.ref)),
+  ]);
+  await deleteDoc(orderRef);
   return { success: true };
 }
