@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog";
+import { Trash2 } from "lucide-react";
 
 const CURRENCIES = ["GBP", "BDT"];
 const PROFIT_BASES = ["PRODUCT_ONLY", "PRODUCT_PLUS_CARGO"];
@@ -439,8 +440,15 @@ export default function AdminPricingModes() {
 
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button variant="outline" onClick={() => onEdit(r)} disabled={saving}>Edit</Button>
-                        <Button variant="destructive" onClick={() => openDelete(r.pricing_mode_id)} disabled={saving}>
-                          Delete
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => openDelete(r.pricing_mode_id)}
+                          disabled={saving}
+                          title="Delete pricing mode"
+                          aria-label="Delete pricing mode"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -461,7 +469,7 @@ export default function AdminPricingModes() {
             ? `Delete pricing mode "${deleteTargetId}"?`
             : "Delete this pricing mode?"
         }
-        confirmText="Delete"
+        confirmText={<Trash2 className="h-4 w-4" />}
         onClose={() => {
           if (!saving) setDeleteOpen(false);
         }}

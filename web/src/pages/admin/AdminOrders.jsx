@@ -276,6 +276,8 @@ export default function AdminOrders() {
                 !!deleteSaving[String(deleteTarget?.order_id || "")] ||
                 String(deleteConfirmName || "").trim() !== String(deleteTarget?.order_name || "").trim()
               }
+              title="Delete order"
+              aria-label="Delete order"
               onClick={async () => {
                 if (!deleteTarget) return;
                 await deleteCancelledOrder(deleteTarget);
@@ -284,7 +286,7 @@ export default function AdminOrders() {
                 setDeleteConfirmName("");
               }}
             >
-              {deleteSaving[String(deleteTarget?.order_id || "")] ? "Deleting..." : "Delete"}
+              {deleteSaving[String(deleteTarget?.order_id || "")] ? "Deleting..." : <Trash2 className="h-4 w-4" />}
             </Button>
           </DialogFooter>
         </DialogContent>

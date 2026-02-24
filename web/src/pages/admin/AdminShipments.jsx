@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Trash2 } from "lucide-react";
 
 function ShipmentsSkeleton({ rows = 8 }) {
   return (
@@ -234,8 +235,14 @@ export default function AdminShipments() {
                           <Button variant="outline" size="sm" onClick={() => openEdit(s)}>
                             Edit
                           </Button>
-                          <Button variant="destructive" size="sm" onClick={() => openDelete(s)}>
-                            Delete
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            onClick={() => openDelete(s)}
+                            title="Delete shipment"
+                            aria-label="Delete shipment"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </td>
@@ -270,7 +277,7 @@ export default function AdminShipments() {
             ? `Delete "${deleteTarget.name}" (${deleteTarget.shipment_id})?`
             : "Delete this shipment?"
         }
-        confirmText="Delete"
+        confirmText={<Trash2 className="h-4 w-4" />}
         onClose={() => {
           if (!deleting) setDeleteOpen(false);
         }}

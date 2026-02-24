@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog";
+import { Trash2 } from "lucide-react";
 
 function UsersSkeleton({ rows = 6 }) {
   return (
@@ -340,10 +341,13 @@ export default function AdminUsers() {
 
                           <Button
                             variant="destructive"
+                            size="icon"
                             onClick={() => openDelete(u.email)}
                             disabled={saving || isSelf}
+                            title="Delete user"
+                            aria-label="Delete user"
                           >
-                            Delete
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
@@ -361,7 +365,7 @@ export default function AdminUsers() {
         onClose={() => setDeleteOpen(false)}
         title="Delete user?"
         description={`This will permanently delete ${deleteTargetEmail}.`}
-        confirmText="Delete"
+        confirmText={<Trash2 className="h-4 w-4" />}
         loading={saving}
         onConfirm={async () => {
           await handleDelete(deleteTargetEmail);

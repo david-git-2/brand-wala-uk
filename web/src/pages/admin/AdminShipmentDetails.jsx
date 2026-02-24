@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Trash2 } from "lucide-react";
 
 function n(v, d = 0) {
   const x = Number(v);
@@ -682,7 +683,15 @@ export default function AdminShipmentDetails() {
                                 <Button size="sm" variant="outline" disabled={busy} onClick={() => saveAllocationRow(a)}>
                                   {busy ? "Saving..." : "Save"}
                                 </Button>
-                                <Button size="sm" variant="destructive" onClick={() => openDelete(a)}>Delete</Button>
+                                <Button
+                                  size="icon"
+                                  variant="destructive"
+                                  onClick={() => openDelete(a)}
+                                  title="Delete shipment item"
+                                  aria-label="Delete shipment item"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
                               </div>
                               {rowErr[id] ? <div className="mt-1 text-[10px] text-destructive">{rowErr[id]}</div> : null}
                             </td>
@@ -900,7 +909,7 @@ export default function AdminShipmentDetails() {
         error={deleteError}
         title="Delete shipment item"
         description={deleteTarget ? `Delete ${deleteTarget.allocation_id}?` : "Delete shipment item?"}
-        confirmText="Delete"
+        confirmText={<Trash2 className="h-4 w-4" />}
         onClose={() => {
           if (!deleting) setDeleteOpen(false);
         }}
