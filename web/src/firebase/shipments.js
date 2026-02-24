@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
   where,
 } from "firebase/firestore/lite";
 import { firestoreDb } from "./client";
@@ -390,6 +391,58 @@ export async function createAllocation(payload = {}) {
   return { allocation_id: id, ...core, ...computed };
 }
 
+export async function createAllocationsBulk(payloads = []) {
+  const rows = Array.isArray(payloads) ? payloads : [];
+  if (!rows.length) return [];
+
+  const shipmentCache = new Map();
+  const itemCache = new Map();
+  const nowTs = serverTimestamp();
+  const out = [];
+  const batch = writeBatch(firestoreDb);
+  const affectedShipmentIds = new Set();
+  const affectedOrderIds = new Set();
+
+  for (const payload of rows) {
+    const sid = String(payload?.shipment_id || "").trim();
+    const oid = String(payload?.order_id || "").trim();
+    const oiid = String(payload?.order_item_id || "").trim();
+    if (!sid || !oiid) throw new Error("shipment_id and order_item_id are required");
+
+    if (!shipmentCache.has(sid)) shipmentCache.set(sid, await getShipment(sid));
+    const ship = shipmentCache.get(sid);
+    if (!ship) throw new Error(`Shipment not found: ${sid}`);
+
+    const itemKey = `${oid}__${oiid}`;
+    if (!itemCache.has(itemKey)) itemCache.set(itemKey, await getOrderItemByRef(oid, oiid));
+    const item = itemCache.get(itemKey);
+
+    const id = allocationId();
+    const core = {
+      allocation_id: id,
+      shipment_id: sid,
+      order_id: oid || String(item?.order_id || ""),
+      order_item_id: oiid,
+      product_id: String(payload?.product_id || item?.product_id || ""),
+      pricing_mode_id: String(payload?.pricing_mode_id || ""),
+      revenue_bdt: n(payload?.revenue_bdt, 0),
+      created_at: nowTs,
+      updated_at: nowTs,
+    };
+    const computed = computeAllocationFields(payload, ship, item);
+    batch.set(doc(firestoreDb, "shipment_allocations", id), { ...core, ...computed });
+    out.push({ allocation_id: id, ...core, ...computed });
+    affectedShipmentIds.add(sid);
+    if (core.order_id) affectedOrderIds.add(core.order_id);
+  }
+
+  await batch.commit();
+  affectedShipmentIds.forEach((shipmentId) => clearShipmentsCache({ shipmentId }));
+  affectedOrderIds.forEach((orderId) => clearShipmentsCache({ orderId }));
+  if (!affectedShipmentIds.size && !affectedOrderIds.size) clearShipmentsCache();
+  return out;
+}
+
 export async function updateAllocation(allocation_id, patch = {}) {
   const id = String(allocation_id || "").trim();
   if (!id) throw new Error("Missing allocation_id");
@@ -429,6 +482,33 @@ export async function deleteAllocation(allocation_id) {
   } else {
     clearShipmentsCache();
   }
+}
+
+export async function deleteAllocationsBulk(rowsOrIds = []) {
+  const rows = Array.isArray(rowsOrIds) ? rowsOrIds : [];
+  if (!rows.length) return;
+  const batch = writeBatch(firestoreDb);
+  const affectedShipmentIds = new Set();
+  const affectedOrderIds = new Set();
+
+  for (const entry of rows) {
+    const id =
+      typeof entry === "string"
+        ? String(entry || "").trim()
+        : String(entry?.allocation_id || "").trim();
+    if (!id) continue;
+    batch.delete(doc(firestoreDb, "shipment_allocations", id));
+    if (entry && typeof entry === "object") {
+      const sid = String(entry.shipment_id || "").trim();
+      const oid = String(entry.order_id || "").trim();
+      if (sid) affectedShipmentIds.add(sid);
+      if (oid) affectedOrderIds.add(oid);
+    }
+  }
+  await batch.commit();
+  affectedShipmentIds.forEach((shipmentId) => clearShipmentsCache({ shipmentId }));
+  affectedOrderIds.forEach((orderId) => clearShipmentsCache({ orderId }));
+  if (!affectedShipmentIds.size && !affectedOrderIds.size) clearShipmentsCache();
 }
 
 export async function suggestAllocationsForShipment(shipment_id, order_id) {

@@ -11,8 +11,9 @@ import {
   updateOrderStatus,
 } from "@/firebase/orders";
 import {
-  createAllocation as createShipmentAllocation,
+  createAllocationsBulk,
   deleteAllocation as deleteShipmentAllocation,
+  deleteAllocationsBulk,
   listAllocationsForOrder,
   listAllocationsForShipment,
   listShipments,
@@ -283,8 +284,8 @@ export default function AdminOrderDetails() {
         setAllocMsg("No remaining items to allocate for this order.");
         return;
       }
-      for (const r of suggestions) {
-        await createShipmentAllocation({
+      await createAllocationsBulk(
+        suggestions.map((r) => ({
           shipment_id: sid,
           order_id: orderId,
           order_item_id: r.order_item_id,
@@ -292,8 +293,8 @@ export default function AdminOrderDetails() {
           arrived_qty: 0,
           unit_product_weight: 0,
           unit_package_weight: 0,
-        });
-      }
+        })),
+      );
       await recalcShipmentAllocations(sid);
       await refreshOrderAllocations();
       await loadAssignedForShipment(sid);
@@ -314,13 +315,12 @@ export default function AdminOrderDetails() {
       const oldShipmentIds = [
         ...new Set(orderAllocations.map((a) => String(a.shipment_id || "").trim()).filter(Boolean)),
       ];
-      for (const a of orderAllocations) {
-        await deleteShipmentAllocation(a.allocation_id);
-      }
+      await deleteAllocationsBulk(orderAllocations);
 
       const suggestions = await suggestAllocationsForShipment(sid, orderId);
-      for (const r of suggestions) {
-        await createShipmentAllocation({
+      if (suggestions.length) {
+        await createAllocationsBulk(
+          suggestions.map((r) => ({
           shipment_id: sid,
           order_id: orderId,
           order_item_id: r.order_item_id,
@@ -328,7 +328,8 @@ export default function AdminOrderDetails() {
           arrived_qty: 0,
           unit_product_weight: 0,
           unit_package_weight: 0,
-        });
+          })),
+        );
       }
       await Promise.all(
         [...new Set([...oldShipmentIds, sid])].map((x) =>

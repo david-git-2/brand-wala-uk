@@ -75,3 +75,4 @@ npm run fb:deploy:hosting
 - Google Apps Script (`clasp`) deployment scripts were removed from root `package.json`.
 - Active backend path is Firebase.
 - If rules/claims change, deploy rules/functions before testing auth-sensitive flows.
+- Firestore schema reference: `/Users/david/Desktop/projects/brand-wala-uk/FIRESTORE_SCHEMA.md`.
