@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthProvider";
 import {
@@ -53,6 +54,7 @@ function formatTs(v) {
 
 export default function AdminShipments() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [shipments, setShipments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -222,6 +224,13 @@ export default function AdminShipments() {
 
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/admin/shipments/${s.shipment_id}`)}
+                          >
+                            View
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => openEdit(s)}>
                             Edit
                           </Button>

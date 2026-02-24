@@ -16,7 +16,6 @@ import AdminShipments from "../pages/admin/AdminShipments";
 import AdminShipmentDetails from "../pages/admin/AdminShipmentDetails";
 import AdminShipmentWeights from "../pages/admin/AdminShipmentWeights";
 import AdminUsers from "../pages/admin/AdminUsers";
-import AdminPricingModes from "../pages/admin/AdminPricingModes";
 import AboutAdmin from "../pages/about/AboutAdmin";
 import AboutCustomer from "../pages/about/AboutCustomer";
 
@@ -176,17 +175,6 @@ export default function AppRoutes() {
           <ProtectedRoute>
             <AdminRoute>
               <AdminUsers />
-            </AdminRoute>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path="/admin/pricing-modes"
-        element={
-          <ProtectedRoute>
-            <AdminRoute>
-              <AdminPricingModes />
             </AdminRoute>
           </ProtectedRoute>
         }

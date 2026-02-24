@@ -15,9 +15,9 @@ export default function AboutAdmin() {
             <CardTitle className="text-base">Required Flow Before Processing</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p><strong>Step 1:</strong> Setup master data first: users (role/access), pricing modes (active), and shipment rates.</p>
+            <p><strong>Step 1:</strong> Setup master data first: users (role/access) and shipment rates.</p>
             <p><strong>Step 2:</strong> Customer places order (status <code>submitted</code>).</p>
-            <p><strong>Step 3:</strong> Admin applies pricing mode + profit and runs <code>Price</code> (status <code>priced</code>).</p>
+            <p><strong>Step 3:</strong> Admin sets profit and calculates prices inside order details (status <code>priced</code>).</p>
             <p><strong>Step 4:</strong> Customer accepts or sends counter; admin finalizes deal (status <code>finalized</code>).</p>
             <p><strong>Step 5:</strong> Create shipment allocation rows: select <code>order_item_id</code>, set allocated qty, shipped qty, and unit weights.</p>
             <p><strong>Step 6:</strong> Run recompute: shipment first, then related orders.</p>
@@ -31,7 +31,6 @@ export default function AboutAdmin() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>Use <Badge variant="secondary">Users</Badge> to create accounts and set role, active, and can see pound price flags.</p>
-            <p>Use <Badge variant="secondary">Pricing Models</Badge> to create active pricing modes before pricing orders.</p>
             <p>Use <Badge variant="secondary">Shipments</Badge> to create shipment rates and cargo cost per kg.</p>
           </CardContent>
         </Card>
@@ -42,7 +41,7 @@ export default function AboutAdmin() {
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
             <p>Customer creates order from cart. Status starts at <code>submitted</code>.</p>
-            <p>Admin sets pricing mode + profit and runs <code>Price</code> to move to <code>priced</code>.</p>
+            <p>Admin sets profit and calculates price in order details to move to <code>priced</code>.</p>
             <p>Customer can counter. Admin can finalize and then start processing.</p>
           </CardContent>
         </Card>
@@ -77,7 +76,7 @@ export default function AboutAdmin() {
             <p>GBP fields are rounded to 2 decimals. BDT fields are rounded to 0 decimals.</p>
             <p>Over-shipping is blocked: total shipped qty for an item cannot exceed ordered qty.</p>
             <p>Do not edit weights in order items. Weight source of truth is shipment allocation.</p>
-            <p>Pre-processing checklist: pricing mode selected, order finalized, shipment exists, allocation rows created, recompute completed.</p>
+            <p>Pre-processing checklist: pricing completed, order finalized, shipment exists, allocation rows created, recompute completed.</p>
           </CardContent>
         </Card>
       </div>

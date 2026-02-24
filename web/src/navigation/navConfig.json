@@ -7,8 +7,7 @@
         { "label": "Cart", "to": "/cart", "roles": ["admin", "customer"] },
 
         { "label": "Shipments", "to": "/admin/shipments", "roles": ["admin"] },
-        { "label": "Users", "to": "/admin/users", "roles": ["admin"] },
-        { "label": "Pricing Models", "to": "/admin/pricing-modes", "roles": ["admin"] }
+        { "label": "Users", "to": "/admin/users", "roles": ["admin"] }
 
   ]
 }

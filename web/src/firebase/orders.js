@@ -131,6 +131,78 @@ function toOrderItemRow(data, id) {
   };
 }
 
+async function syncAllocationsNeededQtyForOrderItem(order_id, order_item_id, requestedQty) {
+  const oid = String(order_id || "").trim();
+  const itemId = String(order_item_id || "").trim();
+  if (!oid || !itemId) return;
+
+  const targetRaw = Math.max(0, Math.round(n(requestedQty, 0)));
+  const snap = await getDocs(
+    query(collection(firestoreDb, "shipment_allocations"), where("order_item_id", "==", itemId)),
+  );
+  if (snap.empty) return;
+
+  const rows = snap.docs
+    .map((d) => ({ id: d.id, ref: d.ref, ...(d.data() || {}) }))
+    .filter((r) => String(r.order_id || "").trim() === oid);
+  if (!rows.length) return;
+
+  const arrivedByRow = rows.map((r) =>
+    Math.max(0, n(r.arrived_qty, n(r.shipped_qty, 0))),
+  );
+  const sumArrived = arrivedByRow.reduce((a, v) => a + v, 0);
+  const target = Math.max(targetRaw, Math.round(sumArrived));
+
+  const currentNeeded = rows.map((r) =>
+    Math.max(0, n(r.needed_qty, n(r.allocated_qty, 0))),
+  );
+  const currentFlexible = currentNeeded.map((v, i) => Math.max(0, v - arrivedByRow[i]));
+  const baseWeights = currentFlexible.map((v) => (v > 0 ? v : 1));
+  const sumWeights = baseWeights.reduce((a, v) => a + v, 0) || rows.length;
+
+  const nextNeeded = [...arrivedByRow];
+  let remaining = Math.max(0, target - Math.round(sumArrived));
+  const add = new Array(rows.length).fill(0);
+
+  // Weighted distribution of remaining needed qty over flexible capacity.
+  for (let i = 0; i < rows.length; i += 1) {
+    if (remaining <= 0) break;
+    const part = i === rows.length - 1
+      ? remaining
+      : Math.floor((remaining * baseWeights[i]) / sumWeights);
+    add[i] += Math.max(0, part);
+  }
+  let used = add.reduce((a, v) => a + v, 0);
+  while (used < remaining) {
+    for (let i = 0; i < rows.length && used < remaining; i += 1) {
+      add[i] += 1;
+      used += 1;
+    }
+  }
+  for (let i = 0; i < rows.length; i += 1) {
+    nextNeeded[i] = Math.max(arrivedByRow[i], Math.round(arrivedByRow[i] + add[i]));
+  }
+
+  const batch = writeBatch(firestoreDb);
+  rows.forEach((r, i) => {
+    const needed = nextNeeded[i];
+    const unitTotalWeight = n(r.unit_total_weight, n(r.unit_product_weight, 0) + n(r.unit_package_weight, 0));
+    const neededWeight = needed * unitTotalWeight;
+    batch.set(
+      r.ref,
+      {
+        needed_qty: needed,
+        allocated_qty: needed,
+        needed_weight: neededWeight,
+        allocated_weight: neededWeight,
+        updated_at: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
+  await batch.commit();
+}
+
 async function recomputeOrderHeaderTotals(orderId) {
   const oid = String(orderId || "").trim();
   if (!oid) return;
@@ -507,6 +579,11 @@ export async function saveCustomerOfferItem({
     },
     { merge: true },
   );
+
+  if (customer_changed_quantity !== undefined) {
+    await syncAllocationsNeededQtyForOrderItem(oid, itemId, customer_changed_quantity);
+  }
+
   return { success: true };
 }
 
@@ -553,6 +630,8 @@ export async function saveAdminFinalNegotiationItem({
     },
     { merge: true },
   );
+
+  await syncAllocationsNeededQtyForOrderItem(oid, itemId, qty);
   await recomputeOrderHeaderTotals(oid);
   return { success: true };
 }

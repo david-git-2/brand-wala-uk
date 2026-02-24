@@ -58,8 +58,8 @@ function avgRate(s) {
 function computeAllocationFields(a, shipment, orderItem = null) {
   const needed_qty = n(a?.needed_qty, n(a?.allocated_qty));
   const arrived_qty = n(a?.arrived_qty, n(a?.shipped_qty));
-  const unit_product_weight = n(a?.unit_product_weight);
-  const unit_package_weight = n(a?.unit_package_weight);
+  const unit_product_weight = n(a?.unit_product_weight, n(orderItem?.unit_product_weight, 0));
+  const unit_package_weight = n(a?.unit_package_weight, n(orderItem?.unit_package_weight, 0));
   const unit_total_weight = unit_product_weight + unit_package_weight;
   const needed_weight = round2(needed_qty * unit_total_weight);
   const arrived_weight = round2(arrived_qty * unit_total_weight);
@@ -97,6 +97,56 @@ function computeAllocationFields(a, shipment, orderItem = null) {
     revenue_bdt: n(a?.revenue_bdt, 0),
     profit_bdt: round0(n(a?.revenue_bdt, 0) - total_cost_bdt),
   };
+}
+
+async function syncOrderItemWeights(order_id, order_item_id, unit_product_weight, unit_package_weight) {
+  const oid = String(order_id || "").trim();
+  const oiid = String(order_item_id || "").trim();
+  if (!oid || !oiid) return;
+  await setDoc(
+    doc(firestoreDb, "orders", oid, "items", oiid),
+    {
+      unit_product_weight: n(unit_product_weight, 0),
+      unit_package_weight: n(unit_package_weight, 0),
+      updated_at: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+async function syncAllAllocationsForOrderItem(order_item_id, unit_product_weight, unit_package_weight) {
+  const oiid = String(order_item_id || "").trim();
+  if (!oiid) return;
+  const allocSnap = await getDocs(
+    query(collection(firestoreDb, "shipment_allocations"), where("order_item_id", "==", oiid)),
+  );
+  if (allocSnap.empty) return;
+
+  const shipmentCache = {};
+  const itemCache = {};
+
+  await Promise.all(
+    allocSnap.docs.map(async (d) => {
+      const prev = d.data() || {};
+      const sid = String(prev.shipment_id || "").trim();
+      const oid = String(prev.order_id || "").trim();
+      const key = `${oid}__${oiid}`;
+
+      if (!shipmentCache[sid]) shipmentCache[sid] = await getShipment(sid);
+      if (!itemCache[key]) itemCache[key] = await getOrderItemByRef(oid, oiid);
+
+      const ship = shipmentCache[sid];
+      if (!ship) return;
+      const item = itemCache[key];
+      const merged = { ...prev, unit_product_weight: n(unit_product_weight, 0), unit_package_weight: n(unit_package_weight, 0) };
+      const computed = computeAllocationFields(merged, ship, item);
+
+      await updateDoc(d.ref, {
+        ...computed,
+        updated_at: serverTimestamp(),
+      });
+    }),
+  );
 }
 
 async function getOrderItemByRef(order_id, order_item_id) {
@@ -246,6 +296,12 @@ export async function updateAllocation(allocation_id, patch = {}) {
     ...("revenue_bdt" in patch ? { revenue_bdt: n(patch.revenue_bdt, 0) } : {}),
     updated_at: serverTimestamp(),
   });
+
+  if ("unit_product_weight" in patch || "unit_package_weight" in patch) {
+    await syncOrderItemWeights(prev.order_id, prev.order_item_id, computed.unit_product_weight, computed.unit_package_weight);
+    await syncAllAllocationsForOrderItem(prev.order_item_id, computed.unit_product_weight, computed.unit_package_weight);
+  }
+
   const next = await getDoc(doc(firestoreDb, "shipment_allocations", id));
   return { allocation_id: id, ...next.data() };
 }

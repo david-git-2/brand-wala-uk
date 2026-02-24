@@ -246,6 +246,33 @@ export default function AdminShipmentDetails() {
     });
     return out;
   }, [selectableOrders]);
+  const orderSlById = useMemo(() => {
+    const out = {};
+    selectableOrders.forEach((o, idx) => {
+      out[String(o.order_id || "")] = o.order_sl || idx + 1;
+    });
+    return out;
+  }, [selectableOrders]);
+
+  const shipmentOrderRows = useMemo(() => {
+    return allocations
+      .map((a) => {
+        const meta = itemByOrderItemId[String(a.order_item_id || "").trim()] || {};
+        const finalUnitGbp = n(meta?.final_unit_gbp, n(meta?.customer_unit_gbp, n(meta?.calculated_selling_price?.selling_unit_gbp, 0)));
+        const finalUnitBdt = n(meta?.final_unit_bdt, n(meta?.customer_unit_bdt, n(meta?.calculated_selling_price?.selling_unit_bdt, 0)));
+        const qty = n(a.needed_qty, n(a.allocated_qty, 0));
+        return {
+          allocation_id: String(a.allocation_id || ""),
+          order_id: String(a.order_id || ""),
+          name: meta?.name || meta?.product_id || "Product",
+          image_url: toDirectGoogleImageUrl(meta?.image_url || ""),
+          qty,
+          finalUnitGbp,
+          finalUnitBdt,
+        };
+      })
+      .sort((x, y) => String(x.order_id).localeCompare(String(y.order_id)));
+  }, [allocations, itemByOrderItemId]);
 
   const aggregateRows = useMemo(() => {
     const itemMap = {};
@@ -662,6 +689,52 @@ export default function AdminShipmentDetails() {
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-base">Orders In This Shipment</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {shipmentOrderRows.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No order rows in this shipment yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-muted/40 text-muted-foreground">
+                      <tr className="text-left">
+                        <th className="px-3 py-2">Product</th>
+                        <th className="px-3 py-2">Order SL</th>
+                        <th className="px-3 py-2">Order</th>
+                        <th className="px-3 py-2">Qty</th>
+                        <th className="px-3 py-2">Final Price</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {shipmentOrderRows.map((r) => (
+                        <tr key={r.allocation_id}>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                                {r.image_url ? <img src={r.image_url} alt={r.name} className="h-full w-full object-cover" /> : null}
+                              </div>
+                              <div className="font-medium">{r.name}</div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">#{orderSlById[r.order_id] || "-"}</td>
+                          <td className="px-3 py-2">{orderNameById[r.order_id] || "Order"}</td>
+                          <td className="px-3 py-2">{fmt0(r.qty)}</td>
+                          <td className="px-3 py-2">
+                            <div>£{n(r.finalUnitGbp).toFixed(2)}</div>
+                            <div className="text-[10px] text-muted-foreground">৳{fmt0(r.finalUnitBdt)}</div>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

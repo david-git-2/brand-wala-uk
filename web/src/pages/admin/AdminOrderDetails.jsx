@@ -189,11 +189,17 @@ export default function AdminOrderDetails() {
         setOrder(data.order);
         setItems(data.items || []);
         const savedCalc = data?.order?.calculated_selling_price || null;
+        const itemSavedPct = (data.items || []).find(
+          (it) => Number.isFinite(Number(it?.calculated_selling_price?.profit_rate_pct)),
+        )?.calculated_selling_price?.profit_rate_pct;
+        const savedPct = Number.isFinite(Number(savedCalc?.profit_rate_pct))
+          ? Number(savedCalc?.profit_rate_pct)
+          : (Number.isFinite(Number(itemSavedPct)) ? Number(itemSavedPct) : 10);
         const cur = String(savedCalc?.customer_price_currency || "bdt").toLowerCase();
         setCustomerPriceCurrency(cur === "gbp" ? "gbp" : "bdt");
         // Price mode/rate are FE preview controls; do not load persisted mode/rate.
         setPriceBase("purchase");
-        setProfitRatePct("10");
+        setProfitRatePct(String(savedPct));
         setPriceEditMode(true);
         setShipments(Array.isArray(ships) ? ships : []);
         const orderAllocs = Array.isArray(allocs) ? allocs : [];
