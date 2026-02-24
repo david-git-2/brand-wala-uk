@@ -32,7 +32,7 @@ function buildProductId(p) {
 function SkeletonCard() {
   return (
     <Card className="overflow-hidden rounded-2xl">
-      <div className="h-40 bg-muted">
+      <div className="h-48 bg-white">
         <Skeleton className="h-full w-full" />
       </div>
       <CardContent className="p-4">

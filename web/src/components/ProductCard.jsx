@@ -80,12 +80,12 @@ export default function ProductCard({ product }) {
   return (
     <Card className="group overflow-hidden rounded-2xl border-border bg-card shadow-sm transition hover:shadow-md">
       {/* Image */}
-      <div className="flex h-40 items-center justify-center bg-muted">
+      <div className="flex h-48 items-center justify-center bg-white p-2">
         {src ? (
           <img
             src={src}
             alt={productWithId.name}
-            className="max-h-32 object-contain transition duration-300 group-hover:scale-105"
+            className="h-[88%] w-[88%] object-contain transition duration-300 group-hover:scale-105"
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={(e) => {
