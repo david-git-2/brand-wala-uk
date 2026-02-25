@@ -1,0 +1,52 @@
+{
+  "$id": "users",
+  "collection": "users",
+  "documentId": "{emailLower}",
+  "required": [
+    "email",
+    "name",
+    "role",
+    "active",
+    "can_see_price_gbp",
+    "can_use_cart"
+  ],
+  "properties": {
+    "email": { "type": "string", "format": "email" },
+    "name": { "type": "string", "minLength": 1 },
+    "role": { "type": "string", "enum": ["admin", "ops", "sales", "customer", "investor"] },
+    "active": { "type": "integer", "enum": [0, 1] },
+    "can_see_price_gbp": { "type": "integer", "enum": [0, 1] },
+    "can_use_cart": { "type": "integer", "enum": [0, 1] },
+    "is_admin": { "type": "boolean" },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  },
+  "subcollections": {
+    "config": {
+      "documentId": "preferences",
+      "required": ["theme", "language", "currency_display"],
+      "properties": {
+        "theme": { "type": "string", "enum": ["light", "dark", "system"] },
+        "language": { "type": "string" },
+        "currency_display": { "type": "string", "enum": ["gbp", "bdt", "auto"] },
+        "items_per_page": { "type": "integer", "minimum": 5, "maximum": 100 },
+        "compact_mode": { "type": "integer", "enum": [0, 1] },
+        "show_images": { "type": "integer", "enum": [0, 1] },
+        "default_order_view": { "type": "string", "enum": ["cards", "table"] },
+        "timezone": { "type": "string" },
+        "created_at": { "type": "timestamp" },
+        "updated_at": { "type": "timestamp" }
+      }
+    },
+    "price_memory": {
+      "documentId": "{eventId}",
+      "required": ["item_id", "item_name", "unit_price_bdt", "saved_at"],
+      "properties": {
+        "item_id": { "type": "string" },
+        "item_name": { "type": "string" },
+        "unit_price_bdt": { "type": "number", "minimum": 0 },
+        "saved_at": { "type": "timestamp" }
+      }
+    }
+  }
+}

@@ -75,6 +75,11 @@ service cloud.firestore {
       allow get: if signedIn() && (isAdmin() || myEmailLower() == userEmail.lower());
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
+
+      match /price_memory/{eventId} {
+        allow get, list: if isAdmin() || (isActive() && myEmailLower() == userEmail.lower());
+        allow create, update, delete: if isAdmin();
+      }
     }
 
     match /carts/{cartEmail} {
@@ -127,6 +132,10 @@ service cloud.firestore {
     }
 
     match /shipment_product_snapshots/{snapshotId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /product_weights/{weightKey} {
       allow read, write: if isAdmin();
     }
 

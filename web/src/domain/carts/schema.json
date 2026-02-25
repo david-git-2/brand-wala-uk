@@ -1,0 +1,43 @@
+{
+  "$id": "carts",
+  "collection": "carts",
+  "documentId": "{emailLower}",
+  "description": "Per-user cart header with items subcollection",
+  "required": ["email", "created_at", "updated_at"],
+  "properties": {
+    "email": { "type": "string", "format": "email" },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  },
+  "subcollections": {
+    "items": {
+      "documentId": "{product_id}",
+      "required": [
+        "product_id",
+        "product_code",
+        "barcode",
+        "name",
+        "brand",
+        "image_url",
+        "unit_price_gbp",
+        "quantity",
+        "line_total_gbp",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "product_id": { "type": "string" },
+        "product_code": { "type": "string" },
+        "barcode": { "type": "string" },
+        "name": { "type": "string" },
+        "brand": { "type": "string" },
+        "image_url": { "type": "string" },
+        "unit_price_gbp": { "type": "number", "minimum": 0 },
+        "quantity": { "type": "number", "minimum": 1 },
+        "line_total_gbp": { "type": "number", "minimum": 0 },
+        "created_at": { "type": "timestamp" },
+        "updated_at": { "type": "timestamp" }
+      }
+    }
+  }
+}

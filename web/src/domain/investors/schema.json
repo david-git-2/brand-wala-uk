@@ -1,0 +1,29 @@
+{
+  "$id": "investors",
+  "collection": "investors",
+  "documentId": "{investor_id}",
+  "description": "Investor master profile and current standing.",
+  "required": [
+    "investor_id",
+    "name",
+    "status",
+    "default_share_pct",
+    "opening_balance_bdt",
+    "current_balance_bdt",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "investor_id": { "type": "string" },
+    "name": { "type": "string" },
+    "phone": { "type": "string" },
+    "email": { "type": "string", "format": "email" },
+    "status": { "type": "string", "enum": ["active", "inactive"] },
+    "default_share_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+    "opening_balance_bdt": { "type": "number" },
+    "current_balance_bdt": { "type": "number" },
+    "notes": { "type": "string" },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  }
+}

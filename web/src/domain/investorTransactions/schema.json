@@ -1,0 +1,45 @@
+{
+  "$id": "investor_transactions",
+  "collection": "investor_transactions",
+  "documentId": "{txn_id}",
+  "description": "Investor give/take ledger. Shipment link is optional.",
+  "required": [
+    "txn_id",
+    "investor_id",
+    "type",
+    "direction",
+    "amount_bdt",
+    "running_balance_bdt",
+    "is_shipment_linked",
+    "fiscal_year",
+    "fiscal_month",
+    "period_key",
+    "txn_at",
+    "created_by",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "txn_id": { "type": "string" },
+    "investor_id": { "type": "string" },
+    "type": {
+      "type": "string",
+      "enum": ["capital_in", "capital_out", "profit_share", "adjustment", "payout"]
+    },
+    "direction": { "type": "string", "enum": ["credit", "debit"] },
+    "amount_bdt": { "type": "number", "minimum": 0 },
+    "running_balance_bdt": { "type": "number" },
+    "is_shipment_linked": { "type": "integer", "enum": [0, 1] },
+    "shipment_id": { "type": "string" },
+    "shipment_accounting_id": { "type": "string" },
+    "fiscal_year": { "type": "integer", "minimum": 2000 },
+    "fiscal_month": { "type": "integer", "minimum": 1, "maximum": 12 },
+    "period_key": { "type": "string" },
+    "ref_no": { "type": "string" },
+    "note": { "type": "string" },
+    "txn_at": { "type": "timestamp" },
+    "created_by": { "type": "string", "format": "email" },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  }
+}

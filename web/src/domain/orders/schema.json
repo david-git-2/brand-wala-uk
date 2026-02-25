@@ -1,0 +1,51 @@
+{
+  "$id": "orders",
+  "collection": "orders",
+  "documentId": "{order_id}",
+  "description": "Order header document (order items are in separate collection: order_items)",
+  "required": [
+    "order_id",
+    "order_sl",
+    "order_name",
+    "creator_email",
+    "creator_name",
+    "creator_role",
+    "status",
+    "shipment_id",
+    "total_needed_qty",
+    "total_delivered_qty",
+    "total_purchase_gbp",
+    "total_final_bdt",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "order_id": { "type": "string" },
+    "order_sl": { "type": "integer", "minimum": 1 },
+    "order_name": { "type": "string" },
+    "creator_email": { "type": "string", "format": "email" },
+    "creator_name": { "type": "string" },
+    "creator_role": { "type": "string", "enum": ["admin", "customer"] },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "submitted",
+        "priced",
+        "under_review",
+        "finalized",
+        "processing",
+        "partially_delivered",
+        "delivered",
+        "cancelled"
+      ]
+    },
+    "shipment_id": { "type": "string" },
+    "total_needed_qty": { "type": "number", "minimum": 0 },
+    "total_delivered_qty": { "type": "number", "minimum": 0 },
+    "total_purchase_gbp": { "type": "number", "minimum": 0 },
+    "total_final_bdt": { "type": "number", "minimum": 0 },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$id": "shipment_items",
+  "collection": "shipment_items",
+  "documentId": "{shipment_id}__{product_id}",
+  "description": "Aggregated per-shipment product rows (multiple orders can contribute to one product row).",
+  "required": [
+    "shipment_item_id",
+    "shipment_id",
+    "product_id",
+    "product_code",
+    "barcode",
+    "item_name",
+    "image_url",
+    "needed_qty",
+    "arrived_qty",
+    "damaged_qty",
+    "expired_qty",
+    "stolen_qty",
+    "other_qty",
+    "delivered_qty",
+    "unit_product_weight_g",
+    "unit_package_weight_g",
+    "unit_total_weight_g",
+    "received_weight_g",
+    "purchase_unit_gbp",
+    "total_value_gbp",
+    "order_refs",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "shipment_item_id": { "type": "string" },
+    "shipment_id": { "type": "string" },
+    "product_id": { "type": "string" },
+    "product_code": { "type": "string" },
+    "barcode": { "type": "string" },
+    "item_name": { "type": "string" },
+    "image_url": { "type": "string" },
+    "needed_qty": { "type": "number", "minimum": 0 },
+    "arrived_qty": { "type": "number", "minimum": 0 },
+    "damaged_qty": { "type": "number", "minimum": 0 },
+    "expired_qty": { "type": "number", "minimum": 0 },
+    "stolen_qty": { "type": "number", "minimum": 0 },
+    "other_qty": { "type": "number", "minimum": 0 },
+    "delivered_qty": { "type": "number", "minimum": 0 },
+    "unit_product_weight_g": { "type": "integer", "minimum": 0 },
+    "unit_package_weight_g": { "type": "integer", "minimum": 0 },
+    "unit_total_weight_g": { "type": "integer", "minimum": 0 },
+    "received_weight_g": { "type": "number", "minimum": 0 },
+    "purchase_unit_gbp": { "type": "number", "minimum": 0 },
+    "total_value_gbp": { "type": "number", "minimum": 0 },
+    "order_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["order_id", "order_item_id", "needed_qty"],
+        "properties": {
+          "order_id": { "type": "string" },
+          "order_item_id": { "type": "string" },
+          "needed_qty": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  }
+}

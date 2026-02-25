@@ -1,0 +1,25 @@
+{
+  "$id": "product_weights",
+  "collection": "product_weights",
+  "documentId": "{weight_key}",
+  "description": "Reusable per-product weight defaults in grams",
+  "required": [
+    "weight_key",
+    "unit_product_weight_g",
+    "unit_package_weight_g",
+    "unit_total_weight_g"
+  ],
+  "properties": {
+    "weight_key": { "type": "string" },
+    "product_id": { "type": "string" },
+    "product_code": { "type": "string" },
+    "barcode": { "type": "string" },
+    "name": { "type": "string" },
+    "unit_product_weight_g": { "type": "integer", "minimum": 0 },
+    "unit_package_weight_g": { "type": "integer", "minimum": 0 },
+    "unit_total_weight_g": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string" },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  }
+}

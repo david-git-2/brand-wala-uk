@@ -12,7 +12,7 @@ Document ID:
 Fields:
 - `email: string`
 - `name: string`
-- `role: "admin" | "customer"`
+- `role: "admin" | "ops" | "sales" | "customer" | "investor"`
 - `active: 0 | 1`
 - `can_see_price_gbp: 0 | 1`
 - `can_use_cart: 0 | 1`
@@ -24,6 +24,17 @@ Used for:
 - Auth access checks (active/role/cart permission)
 - Admin user management page
 - Firebase custom claims sync (Cloud Function)
+
+### `users/{emailLower}/price_memory/{eventId}`
+
+Purpose:
+- Minimal per-user historical unit price memory for pricing decisions.
+
+Fields:
+- `item_id: string` (product/order item reference)
+- `item_name: string`
+- `unit_price_bdt: number`
+- `saved_at: Timestamp`
 
 ---
 
@@ -201,6 +212,146 @@ Fields:
 
 ---
 
+## `shipment_items/{shipment_id__product_id}`
+
+Purpose:
+- Aggregated per-shipment product rows.
+- Multiple orders can contribute to one product row (via `order_refs`).
+
+Fields:
+- `shipment_item_id: string`
+- `shipment_id: string`
+- `product_id: string`
+- `product_code: string`
+- `barcode: string`
+- `item_name: string`
+- `image_url: string`
+- `needed_qty: number`
+- `arrived_qty: number`
+- `damaged_qty: number`
+- `expired_qty: number`
+- `stolen_qty: number`
+- `other_qty: number`
+- `delivered_qty: number`
+- `unit_product_weight_g: number`
+- `unit_package_weight_g: number`
+- `unit_total_weight_g: number`
+- `received_weight_g: number`
+- `purchase_unit_gbp: number`
+- `total_value_gbp: number`
+- `order_refs: array<{order_id, order_item_id, needed_qty}>`
+- `created_at: Timestamp`
+- `updated_at: Timestamp`
+
+---
+
+## `shipment_accounting/{shipment_id}`
+
+Purpose:
+- Per-shipment accounting summary (cost/revenue/receivable/profit) with step-based customer payment tracking.
+
+Fields:
+- `shipment_id: string`
+- `shipment_name: string`
+- `cost_total_gbp: number`
+- `cost_rate_bdt_per_gbp: number`
+- `cost_total_bdt: number`
+- `revenue_expected_bdt: number`
+- `revenue_collected_bdt: number`
+- `receivable_bdt: number`
+- `profit_bdt: number`
+- `status: "open" | "closed"`
+- `closed_at: Timestamp | null`
+- `customer_payment_summary: array<{customer_email, customer_name, expected_bdt, paid_bdt, due_bdt, payment_steps_count, last_payment_at}>`
+- `created_at: Timestamp`
+- `updated_at: Timestamp`
+
+### `shipment_accounting/{shipment_id}/customer_payments/{payment_id}`
+
+Fields:
+- `customer_email: string`
+- `customer_name: string`
+- `amount_bdt: number`
+- `method: "cash" | "bank" | "mobile" | "other"`
+- `note: string`
+- `paid_at: Timestamp`
+- `created_by: string`
+- `created_at: Timestamp`
+
+---
+
+## `investors/{investor_id}`
+
+Purpose:
+- Investor master profile and standing.
+
+Fields:
+- `investor_id: string`
+- `name: string`
+- `phone: string`
+- `email: string`
+- `status: "active" | "inactive"`
+- `default_share_pct: number`
+- `opening_balance_bdt: number`
+- `current_balance_bdt: number`
+- `notes: string`
+- `created_at: Timestamp`
+- `updated_at: Timestamp`
+
+---
+
+## `investor_transactions/{txn_id}`
+
+Purpose:
+- Investor give/take ledger with optional shipment link and accounting period fields.
+
+Fields:
+- `txn_id: string`
+- `investor_id: string`
+- `type: "capital_in" | "capital_out" | "profit_share" | "adjustment" | "payout"`
+- `direction: "credit" | "debit"`
+- `amount_bdt: number`
+- `running_balance_bdt: number`
+- `is_shipment_linked: 0 | 1`
+- `shipment_id: string` (optional)
+- `shipment_accounting_id: string` (optional)
+- `fiscal_year: number`
+- `fiscal_month: 1..12`
+- `period_key: string` (example: `2026-02`)
+- `ref_no: string`
+- `note: string`
+- `txn_at: Timestamp`
+- `created_by: string`
+- `created_at: Timestamp`
+- `updated_at: Timestamp`
+
+---
+
+## `product_weights/{weightKey}`
+
+Purpose:
+- Reusable per-product default weights to avoid re-entering weight in every order/allocation.
+
+Recommended document ID:
+- `product_code-barcode` (preferred in your data flow)
+- fallback: `barcode`
+- fallback: `product_id`
+
+Fields:
+- `weight_key: string`
+- `product_id: string`
+- `product_code: string`
+- `barcode: string`
+- `name: string`
+- `unit_product_weight_g: number` (grams, integer)
+- `unit_package_weight_g: number` (grams, integer)
+- `unit_total_weight_g: number` (grams, integer, computed)
+- `source: string` (optional, e.g. `manual`, `imported`)
+- `created_at: Timestamp`
+- `updated_at: Timestamp`
+
+---
+
 ## Not in Firestore (Important)
 
 - Product catalog is currently loaded from static JSON (`pc_data.json`) in frontend.
@@ -214,7 +365,8 @@ From `firestore.rules`:
 - `users`: admin full CRUD, user can read own profile.
 - `carts` + `carts/*/items`: only active users with `can_use_cart=1` (or admin).
 - `orders` + `orders/*/items`: admin full access; customer limited to own order docs.
-- `shipments`, `shipment_allocations`, `shipment_product_snapshots`: admin only.
+- `shipments`, `shipment_allocations`, `shipment_product_snapshots`, `shipment_items`, `shipment_accounting`, `investors`, `investor_transactions`: admin only.
+- `product_weights`: admin only.
 
 ---
 

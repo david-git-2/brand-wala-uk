@@ -1,0 +1,82 @@
+{
+  "$id": "shipment_accounting",
+  "collection": "shipment_accounting",
+  "documentId": "{shipment_id}",
+  "description": "Per-shipment accounting summary with step-based customer payment tracking.",
+  "required": [
+    "shipment_id",
+    "shipment_name",
+    "cost_total_gbp",
+    "cost_rate_bdt_per_gbp",
+    "cost_total_bdt",
+    "revenue_expected_bdt",
+    "revenue_collected_bdt",
+    "receivable_bdt",
+    "profit_bdt",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "shipment_id": { "type": "string" },
+    "shipment_name": { "type": "string" },
+    "cost_total_gbp": { "type": "number", "minimum": 0 },
+    "cost_rate_bdt_per_gbp": { "type": "number", "minimum": 0 },
+    "cost_total_bdt": { "type": "number", "minimum": 0 },
+    "revenue_expected_bdt": { "type": "number", "minimum": 0 },
+    "revenue_collected_bdt": { "type": "number", "minimum": 0 },
+    "receivable_bdt": { "type": "number", "minimum": 0 },
+    "profit_bdt": { "type": "number" },
+    "status": { "type": "string", "enum": ["open", "closed"] },
+    "closed_at": { "type": "timestamp" },
+    "customer_payment_summary": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "customer_email",
+          "customer_name",
+          "expected_bdt",
+          "paid_bdt",
+          "due_bdt",
+          "payment_steps_count"
+        ],
+        "properties": {
+          "customer_email": { "type": "string", "format": "email" },
+          "customer_name": { "type": "string" },
+          "expected_bdt": { "type": "number", "minimum": 0 },
+          "paid_bdt": { "type": "number", "minimum": 0 },
+          "due_bdt": { "type": "number", "minimum": 0 },
+          "payment_steps_count": { "type": "integer", "minimum": 0 },
+          "last_payment_at": { "type": "timestamp" }
+        }
+      }
+    },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  },
+  "subcollections": {
+    "customer_payments": {
+      "documentId": "{payment_id}",
+      "required": [
+        "customer_email",
+        "customer_name",
+        "amount_bdt",
+        "method",
+        "paid_at",
+        "created_by",
+        "created_at"
+      ],
+      "properties": {
+        "customer_email": { "type": "string", "format": "email" },
+        "customer_name": { "type": "string" },
+        "amount_bdt": { "type": "number", "minimum": 0 },
+        "method": { "type": "string", "enum": ["cash", "bank", "mobile", "other"] },
+        "note": { "type": "string" },
+        "paid_at": { "type": "timestamp" },
+        "created_by": { "type": "string", "format": "email" },
+        "created_at": { "type": "timestamp" }
+      }
+    }
+  }
+}
