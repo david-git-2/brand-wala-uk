@@ -15,8 +15,10 @@ type UserDoc = {
   can_use_cart?: number | boolean | string;
 };
 
+type AppRole = "admin" | "ops" | "sales" | "customer" | "investor";
+
 type AppClaims = {
-  role: "admin" | "customer";
+  role: AppRole;
   active: boolean;
   can_see_price_gbp: boolean;
   can_use_cart: boolean;
@@ -31,8 +33,13 @@ function toBool(v: unknown, fallback = false): boolean {
   return fallback;
 }
 
-function toRole(v: unknown): "admin" | "customer" {
-  return String(v || "").trim().toLowerCase() === "admin" ? "admin" : "customer";
+function toRole(v: unknown): AppRole {
+  const role = String(v || "").trim().toLowerCase();
+  if (role === "admin") return "admin";
+  if (role === "ops") return "ops";
+  if (role === "sales") return "sales";
+  if (role === "investor") return "investor";
+  return "customer";
 }
 
 function claimsFromUserDoc(raw?: UserDoc): AppClaims {

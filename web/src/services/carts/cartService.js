@@ -13,10 +13,23 @@ function n(v, d = 0) {
   return Number.isFinite(x) ? x : d;
 }
 
+function minStep(caseSize) {
+  return Math.max(6, Math.round(n(caseSize, 0)));
+}
+
+function roundUpToStep(qty, step) {
+  const s = Math.max(1, Math.round(n(step, 1)));
+  const q = Math.max(0, Math.round(n(qty, 0)));
+  if (q === 0) return 0;
+  return Math.max(s, Math.ceil(q / s) * s);
+}
+
 function normalizeCartItemInput(item = {}) {
   const product_id = normalizeProductId(item.product_id);
   if (!product_id) throw new Error("Missing product_id");
-  const quantity = Math.max(1, Math.round(n(item.quantity, 1)));
+  const case_size = n(item.case_size, 0);
+  const qty_step = minStep(case_size);
+  const quantity = roundUpToStep(n(item.quantity, qty_step), qty_step);
   const unit_price_gbp = n(item.unit_price_gbp, n(item.price_gbp, 0));
   return {
     product_id,
@@ -27,7 +40,8 @@ function normalizeCartItemInput(item = {}) {
     image_url: String(item.image_url || item.imageUrl || "").trim(),
     price_gbp: unit_price_gbp,
     unit_price_gbp,
-    case_size: n(item.case_size, 0),
+    case_size,
+    qty_step,
     country_of_origin: String(item.country_of_origin || "").trim(),
     quantity,
     line_total_gbp: Number((unit_price_gbp * quantity).toFixed(2)),
@@ -45,6 +59,7 @@ function normalizeCartItemOutput(item = {}) {
     brand: String(item.brand || "").trim(),
     image_url: String(item.image_url || item.imageUrl || "").trim(),
     unit_price_gbp,
+    qty_step: minStep(item.qty_step ?? item.case_size),
     quantity,
     line_total_gbp: Number((unit_price_gbp * quantity).toFixed(2)),
   };
@@ -77,7 +92,16 @@ export function createCartService(repo = defaultCartRepo) {
       if (qty === 0) {
         await repo.removeItem(e, pid);
       } else {
-        await repo.updateItemQuantity(e, pid, qty);
+        const current = await repo.getByUser(e);
+        const currentItem = Array.isArray(current?.items)
+          ? current.items.find((it) => normalizeProductId(it.product_id) === pid)
+          : null;
+        const step = minStep(currentItem?.qty_step ?? currentItem?.case_size ?? 0);
+        const safeQty = roundUpToStep(qty, step);
+        await repo.updateItemQuantity(e, pid, safeQty, {
+          qty_step: step,
+          unit_price_gbp: n(currentItem?.unit_price_gbp, n(currentItem?.price_gbp, 0)),
+        });
       }
       return this.getCart(e);
     },

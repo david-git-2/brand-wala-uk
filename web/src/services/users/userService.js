@@ -65,6 +65,11 @@ export function createUserService(repo = defaultUserRepo) {
       if (!normEmail) throw new Error("User email is required");
       return repo.remove(normEmail);
     },
+    async deactivateUser(email) {
+      const normEmail = normalizeEmail(email);
+      if (!normEmail) throw new Error("User email is required");
+      return repo.deactivate(normEmail);
+    },
   };
 }
 

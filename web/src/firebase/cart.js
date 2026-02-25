@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   serverTimestamp,
   setDoc,
@@ -31,6 +32,17 @@ function itemRef(email, productId) {
   );
 }
 
+function minStep(caseSize) {
+  return Math.max(6, Math.round(Number(caseSize || 0) || 0));
+}
+
+function roundUpToStep(qty, step) {
+  const s = Math.max(1, Math.round(Number(step || 1) || 1));
+  const q = Math.max(0, Math.round(Number(qty || 0) || 0));
+  if (q === 0) return 0;
+  return Math.max(s, Math.ceil(q / s) * s);
+}
+
 function itemsCol(email) {
   return collection(firestoreDb, "carts", normEmail(email), "items");
 }
@@ -44,16 +56,24 @@ function invalidateCartCache(email) {
 
 function fromDocData(data = {}, fallbackId = "") {
   const product_id = String(data.product_id || fallbackId || "").trim();
+  const unit_price_gbp = Number(data.unit_price_gbp ?? data.price_gbp ?? data.price ?? 0) || 0;
+  const case_size = Number(data.case_size ?? 0) || 0;
+  const qty_step = minStep(Number(data.qty_step ?? case_size));
+  const quantity = Number(data.quantity ?? 0) || 0;
   return {
     product_id,
+    product_code: String(data.product_code || "").trim(),
     barcode: String(data.barcode || "").trim(),
     name: String(data.name || "").trim(),
     brand: String(data.brand || "").trim(),
     image_url: String(data.image_url || data.imageUrl || "").trim(),
-    price_gbp: Number(data.price_gbp ?? data.price ?? 0) || 0,
-    case_size: Number(data.case_size ?? 0) || 0,
+    unit_price_gbp,
+    price_gbp: unit_price_gbp,
+    case_size,
+    qty_step,
     country_of_origin: String(data.country_of_origin || "").trim(),
-    quantity: Number(data.quantity ?? 0) || 0,
+    quantity,
+    line_total_gbp: Number((unit_price_gbp * quantity).toFixed(2)),
   };
 }
 
@@ -91,10 +111,16 @@ export async function cartAddItem(email, item) {
   if (!product_id) throw new Error("Missing product_id");
 
   const payload = fromDocData(item, product_id);
+  const step = minStep(payload.case_size);
+  const safeQty = roundUpToStep(payload.quantity || step, step);
   await setDoc(
     itemRef(e, product_id),
     {
       ...payload,
+      quantity: safeQty,
+      qty_step: step,
+      unit_price_gbp: payload.unit_price_gbp,
+      line_total_gbp: Number((payload.unit_price_gbp * safeQty).toFixed(2)),
       updated_at: serverTimestamp(),
       created_at: serverTimestamp(),
     },
@@ -104,13 +130,26 @@ export async function cartAddItem(email, item) {
   return { success: true };
 }
 
-export async function cartUpdateItem(email, product_id, quantity) {
+export async function cartUpdateItem(email, product_id, quantity, options = {}) {
   const e = normEmail(email);
   const pid = normProductId(product_id);
   if (!e) throw new Error("Missing email");
   if (!pid) throw new Error("Missing product_id");
+  let step = minStep(options?.qty_step ?? options?.case_size ?? 0);
+  let unitPrice = Number(options?.unit_price_gbp ?? options?.price_gbp ?? 0) || 0;
+  if (!options?.qty_step || !options?.unit_price_gbp) {
+    const snap = await getDoc(itemRef(e, pid));
+    if (snap.exists()) {
+      const row = fromDocData(snap.data(), pid);
+      if (!options?.qty_step) step = minStep(row.qty_step || row.case_size);
+      if (!options?.unit_price_gbp) unitPrice = Number(row.unit_price_gbp || row.price_gbp || 0) || 0;
+    }
+  }
+  const safeQty = roundUpToStep(quantity, step);
   await updateDoc(itemRef(e, pid), {
-    quantity: Number(quantity || 0),
+    quantity: safeQty,
+    qty_step: step,
+    line_total_gbp: Number((unitPrice * safeQty).toFixed(2)),
     updated_at: serverTimestamp(),
   });
   invalidateCartCache(e);

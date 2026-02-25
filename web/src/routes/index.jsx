@@ -38,7 +38,8 @@ function AboutRedirect() {
 
 function CartRouteGuard({ children }) {
   const { user } = useAuth();
-  if (!user?.can_use_cart) return <Navigate to="/permission-denied" replace />;
+  const role = String(user?.role || "customer").toLowerCase();
+  if (!user?.can_use_cart || role === "customer") return <Navigate to="/permission-denied" replace />;
   return children;
 }
 

@@ -76,6 +76,14 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
 
+      match /config/{configId} {
+        allow get, list: if signedIn() && (isAdmin() || myEmailLower() == userEmail.lower());
+        allow create, update, delete: if isAdmin() || (
+          isActive() &&
+          myEmailLower() == userEmail.lower()
+        );
+      }
+
       match /price_memory/{eventId} {
         allow get, list: if isAdmin() || (isActive() && myEmailLower() == userEmail.lower());
         allow create, update, delete: if isAdmin();
@@ -99,11 +107,7 @@ service cloud.firestore {
         isActive() &&
         request.resource.data.creator_email == myEmailLower()
       );
-      allow update: if isAdmin() || (
-        isActive() &&
-        resource.data.creator_email == myEmailLower() &&
-        request.resource.data.creator_email == resource.data.creator_email
-      );
+      allow update: if isAdmin();
       allow delete: if isAdmin();
 
       match /items/{itemId} {
@@ -115,10 +119,7 @@ service cloud.firestore {
           isActive() &&
           (isOrderOwner(orderId) || isOrderOwnerAfter(orderId))
         );
-        allow update: if isAdmin() || (
-          isActive() &&
-          isOrderOwner(orderId)
-        );
+        allow update: if isAdmin();
         allow delete: if isAdmin();
       }
     }

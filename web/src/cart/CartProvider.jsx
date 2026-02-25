@@ -20,6 +20,13 @@ export function minCaseSize(product) {
   return Math.max(6, Number(product?.case_size || 0));
 }
 
+function roundUpToStep(qty, step) {
+  const s = Math.max(1, Math.round(Number(step || 1) || 1));
+  const q = Math.max(0, Math.round(Number(qty || 0) || 0));
+  if (q === 0) return 0;
+  return Math.max(s, Math.ceil(q / s) * s);
+}
+
 // key resolver: product_id is primary
 function getProductKey(p) {
   return String(p?.product_id || p?.productId || "").trim();
@@ -42,6 +49,7 @@ function reducer(state, action) {
 
         const product = {
           product_id: key,
+          product_code: it.product_code || "",
           barcode: it.barcode || "",
           brand: it.brand || "",
           name: it.name || "",
@@ -51,7 +59,8 @@ function reducer(state, action) {
           country_of_origin: it.country_of_origin || "",
         };
 
-        next[key] = { product, qty: Number(it.quantity || 0) || 0 };
+        const step = minCaseSize(product);
+        next[key] = { product, qty: roundUpToStep(Number(it.quantity || 0) || step, step) };
       }
       return { ...state, items: next };
     }
@@ -79,7 +88,7 @@ function reducer(state, action) {
       const step = minCaseSize(p);
 
       const requested = Number(action.qty ?? step);
-      const safeQty = Math.max(step, requested);
+      const safeQty = roundUpToStep(requested, step);
 
       return {
         ...state,
@@ -127,7 +136,8 @@ export function CartProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const email = user?.email || "";
-  const canUseCart = !!user?.can_use_cart;
+  const role = String(user?.role || "customer").toLowerCase();
+  const canUseCart = !!user?.can_use_cart && role !== "customer";
 
   useEffect(() => {
     let alive = true;
@@ -187,18 +197,23 @@ export function CartProvider({ children }) {
       dispatch({ type: "SET_ITEM_LOADING", key, op: "add" });
 
       try {
+        const step = minCaseSize(product);
+        const safeQty = roundUpToStep(qty, step);
         await cartAddItem(email, {
           product_id: product.product_id,
+          product_code: product.product_code,
           barcode: product.barcode,
           name: product.name,
           brand: product.brand,
           imageUrl: product.imageUrl,
+          unit_price_gbp: Number(product.price || 0),
           price: product.price,
           case_size: product.case_size,
-          quantity: qty,
+          qty_step: step,
+          quantity: safeQty,
         });
 
-        dispatch({ type: "ADD_LOCAL", key, product, qty });
+        dispatch({ type: "ADD_LOCAL", key, product, qty: safeQty });
       } catch (e) {
         console.error("cartAddItem failed:", e);
         try {
@@ -248,7 +263,7 @@ export function CartProvider({ children }) {
       if (state.itemLoading[key]) return;
 
       const step = minCaseSize(item.product);
-      const safeQty = Math.max(step, Number(qty || 0) || 0);
+      const safeQty = roundUpToStep(Number(qty || 0) || 0, step);
 
       dispatch({ type: "SET_ITEM_LOADING", key, op: "update" });
 
@@ -256,7 +271,11 @@ export function CartProvider({ children }) {
       dispatch({ type: "UPDATE_QTY_LOCAL", key, qty: safeQty });
 
       try {
-        await cartUpdateItem(email, key, safeQty);
+        await cartUpdateItem(email, key, safeQty, {
+          qty_step: step,
+          case_size: Number(item.product?.case_size || 0),
+          unit_price_gbp: Number(item.product?.price || 0),
+        });
       } catch (e) {
         console.error("cartUpdateItem failed:", e);
         try {

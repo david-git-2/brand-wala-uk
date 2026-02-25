@@ -26,7 +26,8 @@ export default function App() {
 
   const showCartUI = shouldShowCartUI(pathname);
   const showNav = shouldShowNav(pathname);
-  const canUseCart = !!user?.can_use_cart;
+  const role = String(user?.role || "customer").toLowerCase();
+  const canUseCart = !!user?.can_use_cart && role !== "customer";
 
   return (
     <>

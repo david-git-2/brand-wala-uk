@@ -64,7 +64,7 @@ export default function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const role = String(user?.role || "customer").toLowerCase();
-  const canUseCart = !!user?.can_use_cart;
+  const canUseCart = !!user?.can_use_cart && role !== "customer";
 
   const links = useMemo(() => {
     const all = config?.links || [];

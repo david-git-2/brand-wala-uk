@@ -47,6 +47,11 @@ export function createFirebaseUserRepo() {
       await fbRemoveUser(email);
       return { success: true };
     },
+
+    async deactivate(email) {
+      await fbUpdateUser(email, { active: 0 });
+      return fbGetUserProfileByEmail(email);
+    },
   };
 }
 

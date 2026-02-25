@@ -15,6 +15,7 @@ import { firestoreDb } from "./client";
 const USERS_COLLECTION = "users";
 const PROFILE_TTL_MS = 60 * 1000;
 const LIST_TTL_MS = 30 * 1000;
+const USER_ROLES = new Set(["admin", "ops", "sales", "customer", "investor"]);
 
 const profileCache = new Map();
 const profileInflight = new Map();
@@ -35,7 +36,7 @@ function toNum01(v, fallback = 0) {
 
 function normalizeRole(role) {
   const r = String(role || "customer").trim().toLowerCase();
-  return r === "admin" ? "admin" : "customer";
+  return USER_ROLES.has(r) ? r : "customer";
 }
 
 function normalizeUser(raw) {
@@ -132,6 +133,18 @@ export async function createUser(payload) {
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
   });
+  await setDoc(doc(firestoreDb, USERS_COLLECTION, email, "config", "preferences"), {
+    theme: "system",
+    language: "en",
+    currency_display: "auto",
+    items_per_page: 20,
+    compact_mode: 0,
+    show_images: 1,
+    default_order_view: "table",
+    timezone: "Asia/Dhaka",
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  }, { merge: true });
   invalidateUsersCache(email);
 }
 

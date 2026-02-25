@@ -17,8 +17,8 @@ export function createFirebaseCartRepo() {
     async addItem(email, item) {
       return fbCartAddItem(email, item);
     },
-    async updateItemQuantity(email, productId, quantity) {
-      return fbCartUpdateItem(email, productId, quantity);
+    async updateItemQuantity(email, productId, quantity, options = {}) {
+      return fbCartUpdateItem(email, productId, quantity, options);
     },
     async removeItem(email, productId) {
       return fbCartDeleteItem(email, productId);

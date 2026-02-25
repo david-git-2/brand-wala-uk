@@ -48,8 +48,9 @@ function buildProductId(p) {
 
 export default function ProductCard({ product }) {
   const { user } = useAuth();
+  const role = String(user?.role || "customer").toLowerCase();
   const canSeePrice = !!user?.can_see_price_gbp;
-  const canUseCart = !!user?.can_use_cart;
+  const canUseCart = !!user?.can_use_cart && role !== "customer";
 
   const { add, remove, isInCart, getKey, getItemLoadingOp } = useCart();
 
@@ -137,7 +138,7 @@ export default function ProductCard({ product }) {
         {/* Actions */}
         {!canUseCart ? (
           <div className="mt-4 rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-            Cart is disabled for your account.
+            {role === "customer" ? "Ordering is disabled for customer for now." : "Cart is disabled for your account."}
           </div>
         ) : !inCart ? (
           <div className="mt-4 flex items-center justify-between gap-2">
