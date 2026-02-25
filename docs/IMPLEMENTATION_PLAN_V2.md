@@ -8,11 +8,19 @@ This plan is ordered so independent modules are finished first, then dependent w
 2. Add/maintain reference docs:
    - `ORDER_STATUS.md`
    - `CALC_RULES.md` (if not present, create when calc work starts)
+   - `STATUS_POLICY_V2.md` (policy matrix + override rules)
 3. Define done criteria per module:
    - API/service done
    - UI wired
    - Firestore rules/indexes updated
    - basic test coverage
+4. Centralize status policy (must be shared by UI + services):
+   - One domain module exports status capabilities:
+     - `canEditShipment`, `canChangeShipmentStatus`, `canSoftCloseShipment`
+     - `canEditOrder`, `canChangeOrderStatus`, etc.
+   - UI reads capabilities from this module (no hardcoded per-page conditions).
+   - Services enforce the same policy before writes.
+   - Firestore rules remain the final safety guard.
 
 ---
 
@@ -42,7 +50,7 @@ This plan is ordered so independent modules are finished first, then dependent w
    - add/update/remove/clear
    - blocked writes when inactive/cart disabled
 
-### 3) Shipments Core (Independent Header + Items)
+### 3) Shipments Core (Independent Header + Items) done
 
 1. Finalize:
    - `shipmentRepo`
@@ -111,6 +119,9 @@ This plan is ordered so independent modules are finished first, then dependent w
    - role/status guard enforcement
    - side effects (lock edits/unlock flows)
 2. Use this service from admin/customer order actions.
+3. Ensure status policy module is consumed by both:
+   - UI capability rendering
+   - service-level write authorization checks
 
 ### 9) Shipment <-> Order Integration
 

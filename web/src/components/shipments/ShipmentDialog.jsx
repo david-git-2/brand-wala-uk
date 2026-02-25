@@ -38,10 +38,10 @@ export default function ShipmentDialog({
     const s = initial || {};
     return {
       name: String(s.name || ""),
-      gbp_avg_rate: s.gbp_avg_rate ?? "",
-      gbp_rate_product: s.gbp_rate_product ?? "",
-      gbp_rate_cargo: s.gbp_rate_cargo ?? "",
-      cargo_cost_per_kg: s.cargo_cost_per_kg ?? "",
+      gbp_avg_rate: s.gbp_avg_rate ?? s.gbp_rate_avg_bdt ?? "",
+      gbp_rate_product: s.gbp_rate_product ?? s.gbp_rate_product_bdt ?? "",
+      gbp_rate_cargo: s.gbp_rate_cargo ?? s.gbp_rate_cargo_bdt ?? "",
+      cargo_cost_per_kg: s.cargo_cost_per_kg ?? s.cargo_cost_per_kg_gbp ?? "",
       status: String(s.status || "draft"),
     };
   }, [initial]);

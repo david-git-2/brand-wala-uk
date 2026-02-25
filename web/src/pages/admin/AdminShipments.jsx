@@ -2,12 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth/AuthProvider";
-import {
-  createShipment,
-  deleteShipment,
-  listShipments,
-  updateShipment,
-} from "@/firebase/shipments";
+import { shipmentService } from "@/services/shipments/shipmentService";
+import { getShipmentCapabilities } from "@/domain/status/policy";
 
 import ConfirmDeleteDialog from "../../components/common/ConfirmDeleteDialog";
 import ShipmentDialog from "../../components/shipments/ShipmentDialog";
@@ -16,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2 } from "lucide-react";
+import { Ban } from "lucide-react";
 
 function ShipmentsSkeleton({ rows = 8 }) {
   return (
@@ -68,17 +64,17 @@ export default function AdminShipments() {
   const [saving, setSaving] = useState(false);
   const [dialogError, setDialogError] = useState("");
 
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
 
   async function load() {
     if (!user?.email) return;
     setLoading(true);
     setErr("");
     try {
-      const data = await listShipments();
+      const data = await shipmentService.listShipments();
       setShipments(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr(e?.message || "Failed to load shipments");
@@ -94,12 +90,8 @@ export default function AdminShipments() {
 
   const sorted = useMemo(() => {
     const copy = [...shipments];
-    const hasCreated = copy.some((s) => tsMs(s.created_at) > 0);
-    if (hasCreated) {
-      copy.sort((a, b) => tsMs(b.created_at) - tsMs(a.created_at));
-      return copy;
-    }
-    return copy.reverse();
+    copy.sort((a, b) => tsMs(b.created_at) - tsMs(a.created_at));
+    return copy;
   }, [shipments]);
 
   function openCreate() {
@@ -116,10 +108,10 @@ export default function AdminShipments() {
     setDialogOpen(true);
   }
 
-  function openDelete(s) {
-    setDeleteTarget(s);
-    setDeleteError("");
-    setDeleteOpen(true);
+  function openCancel(s) {
+    setCancelTarget(s);
+    setCancelError("");
+    setCancelOpen(true);
   }
 
   async function handleSubmit(payload) {
@@ -128,11 +120,19 @@ export default function AdminShipments() {
     setSaving(true);
     setDialogError("");
     try {
+      const mappedPayload = {
+        name: payload.name,
+        gbp_avg_rate: payload.gbp_avg_rate,
+        gbp_rate_product: payload.gbp_rate_product,
+        gbp_rate_cargo: payload.gbp_rate_cargo,
+        cargo_cost_per_kg: payload.cargo_cost_per_kg,
+      };
+
       if (dialogMode === "edit") {
         const shipment_id = editing?.shipment_id;
-        await updateShipment(shipment_id, payload);
+        await shipmentService.updateShipment(shipment_id, mappedPayload);
       } else {
-        await createShipment(payload);
+        await shipmentService.createShipment(mappedPayload);
       }
 
       setDialogOpen(false);
@@ -145,20 +145,23 @@ export default function AdminShipments() {
     }
   }
 
-  async function handleDelete() {
-    if (!user?.email || !deleteTarget?.shipment_id) return;
+  async function handleCancelShipment() {
+    if (!user?.email || !cancelTarget?.shipment_id) return;
 
-    setDeleting(true);
-    setDeleteError("");
+    setCancelling(true);
+    setCancelError("");
     try {
-      await deleteShipment(deleteTarget.shipment_id);
-      setDeleteOpen(false);
-      setDeleteTarget(null);
+      await shipmentService.removeShipment(cancelTarget.shipment_id, {
+        role: user?.role || "admin",
+        email: user?.email || "",
+      });
+      setCancelOpen(false);
+      setCancelTarget(null);
       await load();
     } catch (e) {
-      setDeleteError(e?.message || "Failed to delete shipment");
+      setCancelError(e?.message || "Failed to cancel shipment");
     } finally {
-      setDeleting(false);
+      setCancelling(false);
     }
   }
 
@@ -208,46 +211,46 @@ export default function AdminShipments() {
                 </thead>
 
                 <tbody className="divide-y">
-                  {sorted.map((s) => (
-                    <tr key={s.shipment_id} className="align-top">
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-foreground">{s.name || "-"}</div>
-                        <div className="text-xs text-muted-foreground">{s.shipment_id}</div>
-                      </td>
+                  {sorted.map((s) => {
+                    const cap = getShipmentCapabilities({ role: "admin", status: s.status });
+                    return (
+                      <tr key={s.shipment_id} className="align-top">
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-foreground">{s.name || "-"}</div>
+                          <div className="text-xs text-muted-foreground">{s.shipment_id}</div>
+                        </td>
 
-                      <td className="px-4 py-3 text-xs">
-                        {s.status ? <Badge variant="secondary">{s.status}</Badge> : <span className="text-muted-foreground">-</span>}
-                      </td>
+                        <td className="px-4 py-3 text-xs">
+                          {s.status ? <Badge variant="secondary">{s.status}</Badge> : <span className="text-muted-foreground">-</span>}
+                        </td>
 
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{Number(s.gbp_avg_rate || 0)}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{Number(s.cargo_cost_per_kg || 0)}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{formatTs(s.updated_at)}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{Number(s.gbp_rate_avg_bdt || 0)}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{Number(s.cargo_cost_per_kg_gbp || 0)}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{formatTs(s.updated_at)}</td>
 
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => navigate(`/admin/shipments/${s.shipment_id}`)}
-                          >
-                            View
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => openEdit(s)}>
-                            Edit
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            onClick={() => openDelete(s)}
-                            title="Delete shipment"
-                            aria-label="Delete shipment"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => navigate(`/admin/shipments/${s.shipment_id}`)}>
+                              View
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => openEdit(s)} disabled={!cap.canEdit}>
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => openCancel(s)}
+                              title="Cancel shipment"
+                              aria-label="Cancel shipment"
+                              disabled={!cap.canSoftClose}
+                            >
+                              <Ban className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -268,20 +271,20 @@ export default function AdminShipments() {
       />
 
       <ConfirmDeleteDialog
-        open={deleteOpen}
-        loading={deleting}
-        error={deleteError}
-        title="Delete shipment"
+        open={cancelOpen}
+        loading={cancelling}
+        error={cancelError}
+        title="Cancel shipment"
         description={
-          deleteTarget
-            ? `Delete "${deleteTarget.name}" (${deleteTarget.shipment_id})?`
-            : "Delete this shipment?"
+          cancelTarget
+            ? `Cancel "${cancelTarget.name}" (${cancelTarget.shipment_id})? Cancelled shipments are locked.`
+            : "Cancel this shipment?"
         }
-        confirmText={<Trash2 className="h-4 w-4" />}
+        confirmText={<Ban className="h-4 w-4" />}
         onClose={() => {
-          if (!deleting) setDeleteOpen(false);
+          if (!cancelling) setCancelOpen(false);
         }}
-        onConfirm={handleDelete}
+        onConfirm={handleCancelShipment}
       />
     </div>
   );

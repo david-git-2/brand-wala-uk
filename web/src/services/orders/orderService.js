@@ -1,5 +1,13 @@
 import { orderRepo as defaultOrderRepo } from "@/infra/firebase/repos/orderRepo";
 import { orderItemRepo as defaultOrderItemRepo } from "@/infra/firebase/repos/orderItemRepo";
+import { statusOverrideRepo as defaultStatusOverrideRepo } from "@/infra/firebase/repos/statusOverrideRepo";
+import {
+  assertOrderCanChangeStatus,
+  assertOrderCanEditHeader,
+  assertOrderCanEditItems,
+  canTransitionOrderStatus,
+  getOrderCapabilities,
+} from "@/domain/status/policy";
 
 function s(v) {
   return String(v || "").trim();
@@ -118,7 +126,16 @@ function normalizeItemPatch(patch = {}) {
   return out;
 }
 
-export function createOrderService(orderRepo = defaultOrderRepo, orderItemRepo = defaultOrderItemRepo) {
+export function createOrderService(
+  orderRepo = defaultOrderRepo,
+  orderItemRepo = defaultOrderItemRepo,
+  statusOverrideRepo = defaultStatusOverrideRepo,
+) {
+  function canCustomerSeeOrderStatus(status) {
+    const s1 = normalizeStatus(status, "submitted");
+    return ["priced", "under_review", "finalized", "processing", "partially_delivered", "delivered", "cancelled"].includes(s1);
+  }
+
   return {
     async getOrderById(orderId) {
       return orderRepo.getById(s(orderId));
@@ -132,19 +149,39 @@ export function createOrderService(orderRepo = defaultOrderRepo, orderItemRepo =
       return orderRepo.listAll();
     },
 
+    async listOrdersForActor(context = {}) {
+      const role = s(context?.role || "").toLowerCase();
+      const email = s(context?.email || "").toLowerCase();
+      if (role === "admin" || role === "ops" || role === "sales" || role === "investor") {
+        return orderRepo.listAll();
+      }
+      if (role === "customer") {
+        const rows = await orderRepo.listByCreatorEmail(email);
+        return rows.filter((r) => canCustomerSeeOrderStatus(r.status));
+      }
+      return [];
+    },
+
     async createOrder(input) {
       return orderRepo.create(normalizeOrderCreateInput(input));
     },
 
-    async updateOrder(orderId, patch) {
+    async updateOrder(orderId, patch, context = { role: "admin" }) {
       const id = s(orderId);
       if (!id) throw new Error("order_id is required");
+      const prev = await orderRepo.getById(id);
+      if (!prev) throw new Error("Order not found");
+      assertOrderCanEditHeader({ role: context?.role || "admin", status: prev.status });
       return orderRepo.update(id, normalizeOrderPatch(patch));
     },
 
-    async removeOrder(orderId) {
+    async removeOrder(orderId, context = { role: "admin" }) {
       const id = s(orderId);
       if (!id) throw new Error("order_id is required");
+      const prev = await orderRepo.getById(id);
+      if (!prev) return { success: true };
+      const cap = getOrderCapabilities({ role: context?.role || "admin", status: prev.status });
+      if (!cap.isAdmin) throw new Error("Only admin can delete orders.");
       return orderRepo.remove(id);
     },
 
@@ -162,9 +199,14 @@ export function createOrderService(orderRepo = defaultOrderRepo, orderItemRepo =
       return orderItemRepo.create(normalizeItemCreateInput(input));
     },
 
-    async updateOrderItem(orderItemId, patch) {
+    async updateOrderItem(orderItemId, patch, context = { role: "admin" }) {
       const id = s(orderItemId);
       if (!id) throw new Error("order_item_id is required");
+      const prev = await orderItemRepo.getById(id);
+      if (!prev) throw new Error("Order item not found");
+      const order = await orderRepo.getById(prev.order_id);
+      if (!order) throw new Error("Order not found");
+      assertOrderCanEditItems({ role: context?.role || "admin", status: order.status });
       return orderItemRepo.update(id, normalizeItemPatch(patch));
     },
 
@@ -172,6 +214,47 @@ export function createOrderService(orderRepo = defaultOrderRepo, orderItemRepo =
       const id = s(orderItemId);
       if (!id) throw new Error("order_item_id is required");
       return orderItemRepo.remove(id);
+    },
+
+    async updateOrderStatus(orderId, nextStatus, context = {}) {
+      const id = s(orderId);
+      const to = normalizeStatus(nextStatus, "");
+      if (!id) throw new Error("order_id is required");
+      if (!to) throw new Error("target status is required");
+
+      const prev = await orderRepo.getById(id);
+      if (!prev) throw new Error("Order not found");
+      const from = normalizeStatus(prev.status, "submitted");
+
+      const actorRole = s(context?.role || "admin").toLowerCase();
+      const actorEmail = s(context?.email).toLowerCase();
+      const force = !!context?.force;
+      const reason = s(context?.reason);
+
+      assertOrderCanChangeStatus({ role: actorRole });
+      if (from === to) return prev;
+
+      const allowed = canTransitionOrderStatus(from, to);
+      if (!allowed && !force) {
+        throw new Error(`Invalid order status transition: ${from} -> ${to}`);
+      }
+      if (!allowed && force && !reason) {
+        throw new Error("Override reason is required for forced order status change.");
+      }
+
+      const updated = await orderRepo.update(id, { status: to });
+      if (!allowed && force) {
+        await statusOverrideRepo.log({
+          entity_type: "order",
+          entity_id: id,
+          from_status: from,
+          to_status: to,
+          reason,
+          actor_email: actorEmail,
+          actor_role: actorRole,
+        });
+      }
+      return updated;
     },
   };
 }

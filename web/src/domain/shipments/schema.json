@@ -22,7 +22,7 @@
   "properties": {
     "shipment_id": { "type": "string" },
     "name": { "type": "string" },
-    "status": { "type": "string", "enum": ["draft", "in_transit", "received", "closed"] },
+    "status": { "type": "string", "enum": ["draft", "in_transit", "received", "closed", "cancelled"] },
     "cargo_cost_per_kg_gbp": { "type": "number", "minimum": 0 },
     "gbp_rate_product_bdt": { "type": "number", "minimum": 0 },
     "gbp_rate_cargo_bdt": { "type": "number", "minimum": 0 },
