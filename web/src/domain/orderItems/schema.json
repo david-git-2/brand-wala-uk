@@ -39,7 +39,13 @@
     "image_url": { "type": "string" },
     "case_size": { "type": "number", "minimum": 0 },
     "needed_quantity": { "type": "number", "minimum": 0 },
-    "delivered_quantity": { "type": "number", "minimum": 0 },
+    "delivered_quantity": {
+      "type": "number",
+      "minimum": 0,
+      "x-computed": true,
+      "x-read-only": true,
+      "x-derived-from": "shipment_items.delivered_qty aggregated by order_refs.order_item_id"
+    },
     "purchase_price_gbp": { "type": "number", "minimum": 0 },
     "offer_price_bdt_on_purchase": { "type": "number", "minimum": 0 },
     "offer_price_bdt_on_total": { "type": "number", "minimum": 0 },

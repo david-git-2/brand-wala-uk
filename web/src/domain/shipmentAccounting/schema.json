@@ -24,9 +24,26 @@
     "cost_rate_bdt_per_gbp": { "type": "number", "minimum": 0 },
     "cost_total_bdt": { "type": "number", "minimum": 0 },
     "revenue_expected_bdt": { "type": "number", "minimum": 0 },
-    "revenue_collected_bdt": { "type": "number", "minimum": 0 },
-    "receivable_bdt": { "type": "number", "minimum": 0 },
-    "profit_bdt": { "type": "number" },
+    "revenue_collected_bdt": {
+      "type": "number",
+      "minimum": 0,
+      "x-computed": true,
+      "x-read-only": true,
+      "x-derived-from": "shipment_accounting/{shipment_id}/customer_payments.amount_bdt"
+    },
+    "receivable_bdt": {
+      "type": "number",
+      "minimum": 0,
+      "x-computed": true,
+      "x-read-only": true,
+      "x-derived-from": "revenue_expected_bdt - revenue_collected_bdt"
+    },
+    "profit_bdt": {
+      "type": "number",
+      "x-computed": true,
+      "x-read-only": true,
+      "x-derived-from": "revenue_expected_bdt - cost_total_bdt"
+    },
     "status": { "type": "string", "enum": ["open", "closed"] },
     "closed_at": { "type": "timestamp" },
     "customer_payment_summary": {
