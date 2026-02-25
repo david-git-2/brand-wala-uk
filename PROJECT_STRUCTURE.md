@@ -104,7 +104,8 @@
         │   └── appConfig.js
         ├── domain
         │   ├── carts
-        │   │   └── schema.json
+        │   │   ├── schema.json
+        │   │   └── types.js
         │   ├── investorTransactions
         │   │   └── schema.json
         │   ├── investors
@@ -166,8 +167,13 @@
         │       ├── client.js
         │       └── repos
         │           ├── cartRepo.js
+        │           ├── investorRepo.js
+        │           ├── investorTransactionRepo.js
+        │           ├── orderItemRepo.js
         │           ├── orderRepo.js
         │           ├── productWeightRepo.js
+        │           ├── shipmentAccountingRepo.js
+        │           ├── shipmentItemRepo.js
         │           ├── shipmentRepo.js
         │           └── userRepo.js
         ├── lib
@@ -176,6 +182,12 @@
         │   ├── ids.js
         │   └── money.js
         ├── services
+        │   ├── carts
+        │   │   └── cartService.js
+        │   ├── investorTransactions
+        │   │   └── investorTransactionService.js
+        │   ├── investors
+        │   │   └── investorService.js
         │   ├── orders
         │   │   └── orderService.js
         │   ├── shipments
