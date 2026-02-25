@@ -77,3 +77,5 @@ npm run fb:deploy:hosting
 - If rules/claims change, deploy rules/functions before testing auth-sensitive flows.
 - Firestore schema reference: `/Users/david/Desktop/projects/brand-wala-uk/FIRESTORE_SCHEMA.md`.
 - Project structure guide: `/Users/david/Desktop/projects/brand-wala-uk/PROJECT_STRUCTURE.md`.
+- Firebase v2 setup guide: `/Users/david/Desktop/projects/brand-wala-uk/docs/FIREBASE_V2_SETUP.md`.
+- v2 migration plan: `/Users/david/Desktop/projects/brand-wala-uk/docs/V2_MIGRATION_PLAN.md`.

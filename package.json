@@ -5,7 +5,10 @@
     "fb:emulators": "firebase emulators:start",
     "fb:emulators:import": "firebase emulators:start --import=./.firebase-data --export-on-exit",
     "fb:deploy:functions": "firebase deploy --only functions",
+    "fb:deploy:functions:v2": "firebase deploy --only functions --project brandwala-v2",
     "fb:deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes",
-    "fb:deploy:hosting": "firebase deploy --only hosting"
+    "fb:deploy:rules:v2": "firebase deploy --only firestore:rules,firestore:indexes --project brandwala-v2",
+    "fb:deploy:hosting": "firebase deploy --only hosting",
+    "fb:deploy:hosting:v2": "firebase deploy --only hosting --project brandwala-v2"
   }
 }

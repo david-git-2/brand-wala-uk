@@ -134,23 +134,33 @@
         │   ├── catalog
         │   │   ├── components
         │   │   ├── hooks
-        │   │   └── pages
+        │   │   ├── pages
+        │   │   └── store
+        │   │       └── catalogStore.js
         │   ├── orders
         │   │   ├── components
         │   │   ├── hooks
-        │   │   └── pages
+        │   │   ├── pages
+        │   │   └── store
+        │   │       └── ordersStore.js
         │   ├── shipments
         │   │   ├── components
         │   │   ├── hooks
-        │   │   └── pages
+        │   │   ├── pages
+        │   │   └── store
+        │   │       └── shipmentsStore.js
         │   ├── product-weights
         │   │   ├── components
         │   │   ├── hooks
-        │   │   └── pages
+        │   │   ├── pages
+        │   │   └── store
+        │   │       └── productWeightsStore.js
         │   └── users
         │       ├── components
         │       ├── hooks
-        │       └── pages
+        │       ├── pages
+        │       └── store
+        │           └── usersStore.js
         ├── infra
         │   └── firebase
         │       ├── client.js
@@ -174,6 +184,8 @@
         │   │   └── productWeightService.js
         │   └── users
         │       └── userService.js
+        ├── store
+        │   └── appStore.js
         └── styles
 ```
 

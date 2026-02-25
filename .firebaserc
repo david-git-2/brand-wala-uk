@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "brandwala-wholesale"
-  }
+    "default": "brandwala-wholesale",
+    "v2": "brandwala-v2"
+  },
+  "targets": {},
+  "etags": {}
 }
