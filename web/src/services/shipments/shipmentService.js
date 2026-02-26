@@ -4,6 +4,7 @@ import { shipmentAccountingRepo as defaultShipmentAccountingRepo } from "@/infra
 import { statusOverrideRepo as defaultStatusOverrideRepo } from "@/infra/firebase/repos/statusOverrideRepo";
 import {
   assertShipmentCanEdit,
+  assertShipmentCanEditItemFields,
   assertShipmentCanEditItems,
   assertShipmentCanSoftClose,
   canTransitionShipmentStatus,
@@ -315,7 +316,13 @@ export function createShipmentService(
       const ship = await shipmentRepo.getById(s(prev.shipment_id));
       if (!ship) throw new Error("Shipment not found");
       assertShipmentCanEditItems({ role: context?.role || "admin", status: ship.status });
-      const updated = await shipmentItemRepo.update(id, normalizeShipmentItemPatch(patch));
+      const normalized = normalizeShipmentItemPatch(patch);
+      assertShipmentCanEditItemFields({
+        role: context?.role || "admin",
+        status: ship.status,
+        fields: Object.keys(normalized),
+      });
+      const updated = await shipmentItemRepo.update(id, normalized);
       await this.recomputeShipmentTotals(s(prev.shipment_id));
       return updated;
     },

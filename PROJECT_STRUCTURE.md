@@ -94,6 +94,7 @@
     └── src
         ├── app
         │   ├── App.jsx
+        │   ├── queryClient.js
         │   ├── providers.jsx
         │   └── routes.jsx
         ├── assets
@@ -191,6 +192,7 @@
         │   ├── dates.js
         │   ├── format.js
         │   ├── ids.js
+        │   ├── queryKeys.js
         │   └── money.js
         ├── services
         │   ├── carts

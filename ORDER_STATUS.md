@@ -45,6 +45,15 @@ Canonical order state machine used by admin/customer workflows.
 - Admin:
   - Manages status transitions and shipment lifecycle.
   - Can permanently delete only cancelled orders (typed confirmation).
+- Ops:
+  - Can edit operational quantity fields in active states (no status transition).
+
+## Field-level enforcement
+
+- Canonical rules live in `/Users/david/Desktop/projects/brand-wala-uk/web/src/domain/status/policy.js`.
+- Services enforce those field guards before writes:
+  - `/Users/david/Desktop/projects/brand-wala-uk/web/src/services/orders/orderService.js`
+  - `/Users/david/Desktop/projects/brand-wala-uk/web/src/services/shipments/shipmentService.js`
 
 ## Data behavior
 

@@ -3,13 +3,11 @@
   "links": [
     { "label": "Products", "to": "/products", "roles": ["admin", "customer"] },
     { "label": "Orders", "to": "/orders", "roles": ["admin","customer"] },
-    { "label": "About", "to": "/about", "roles": ["admin", "customer"] },
-        { "label": "Cart", "to": "/cart", "roles": ["admin", "customer"] },
-
-        { "label": "Shipments", "to": "/admin/shipments", "roles": ["admin"] },
-        { "label": "Users", "to": "/admin/users", "roles": ["admin"] },
-        { "label": "Accounting", "to": "/admin/finance/shipment-accounting", "roles": ["admin"] },
-        { "label": "Investors", "to": "/admin/finance/investors", "roles": ["admin"] }
-
+    { "label": "Cart", "to": "/cart", "roles": ["admin", "customer"] },
+    { "label": "Shipments", "to": "/admin/shipments", "roles": ["admin"] },
+    { "label": "Users", "to": "/admin/users", "roles": ["admin"] },
+    { "label": "Accounting", "to": "/admin/finance/shipment-accounting", "roles": ["admin"] },
+    { "label": "Investors", "to": "/admin/finance/investors", "roles": ["admin"] },
+    { "label": "About", "to": "/about", "roles": ["admin", "customer"] }
   ]
 }

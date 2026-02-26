@@ -9,6 +9,7 @@ import { calculateOrderItemPricing } from "@/domain/orders/calc";
 import {
   assertOrderCanChangeStatus,
   assertOrderCanEditHeader,
+  assertOrderCanEditItemFields,
   assertOrderCanEditItems,
   canTransitionOrderStatus,
   getOrderCapabilities,
@@ -442,24 +443,20 @@ export function createOrderService(
       assertOrderCanEditItems({ role, status: order.status });
 
       const normalized = normalizeItemPatch(patch);
+      const fields = Object.keys(normalized);
+      assertOrderCanEditItemFields({ role, status: order.status, fields });
       if ("needed_quantity" in normalized && !isQtyValidByCase(normalized.needed_quantity, prev.case_size)) {
         throw new Error("Quantity must follow case-size step.");
       }
 
-      if (role === "customer") {
-        const allowed = ["customer_counter_offer_price_bdt"];
-        const invalid = Object.keys(normalized).filter((k) => !allowed.includes(k));
-        if (invalid.length) throw new Error("Customer can only update counter offer.");
-        if ("customer_counter_offer_price_bdt" in normalized && !(n(normalized.customer_counter_offer_price_bdt, 0) > 0)) {
-          throw new Error("Customer counter offer must be greater than 0.");
-        }
-      } else {
-        if ("final_price_bdt" in normalized && !(n(normalized.final_price_bdt, 0) > 0)) {
-          throw new Error("Final price must be greater than 0.");
-        }
-        if ("offered_price_bdt" in normalized && !(n(normalized.offered_price_bdt, 0) >= 0)) {
-          throw new Error("Offered price must be 0 or greater.");
-        }
+      if ("customer_counter_offer_price_bdt" in normalized && !(n(normalized.customer_counter_offer_price_bdt, 0) > 0)) {
+        throw new Error("Customer counter offer must be greater than 0.");
+      }
+      if ("final_price_bdt" in normalized && !(n(normalized.final_price_bdt, 0) > 0)) {
+        throw new Error("Final price must be greater than 0.");
+      }
+      if ("offered_price_bdt" in normalized && !(n(normalized.offered_price_bdt, 0) >= 0)) {
+        throw new Error("Offered price must be 0 or greater.");
       }
 
       const updated = await orderItemRepo.update(id, normalized);
@@ -480,7 +477,15 @@ export function createOrderService(
       const oiid = s(orderItemId);
       const sid = s(shipmentId);
       if (!oiid || !sid) throw new Error("order_item_id and shipment_id are required");
-      if (s(context?.role).toLowerCase() !== "admin") throw new Error("Only admin can remove from shipment.");
+      const orderItem = await orderItemRepo.getById(oiid);
+      if (!orderItem) throw new Error("Order item not found");
+      const order = await orderRepo.getById(orderItem.order_id);
+      if (!order) throw new Error("Order not found");
+      assertOrderCanEditItemFields({
+        role: s(context?.role).toLowerCase(),
+        status: order.status,
+        fields: ["is_deleted"],
+      });
       const rows = await allocationService.listByOrderItemAndShipment(oiid, sid);
       for (const row of rows) {
         await allocationService.updateAllocation(row.allocation_id, {
@@ -498,12 +503,15 @@ export function createOrderService(
     async softDeleteOrderItem(orderItemId, context = { role: "admin", email: "" }, opts = {}) {
       const id = s(orderItemId);
       if (!id) throw new Error("order_item_id is required");
-      if (s(context?.role).toLowerCase() !== "admin") throw new Error("Only admin can soft delete order item.");
+      const role = s(context?.role).toLowerCase();
+      const row = await orderItemRepo.getById(id);
+      if (!row) return { success: true };
+      const order = await orderRepo.getById(row.order_id);
+      if (!order) throw new Error("Order not found");
+      assertOrderCanEditItemFields({ role, status: order.status, fields: ["is_deleted"] });
       if (opts?.shipment_id) {
         return this.removeOrderItemFromShipment(id, opts.shipment_id, context);
       }
-      const prev = await orderItemRepo.getById(id);
-      if (!prev) return { success: true };
       const updated = await orderItemRepo.update(id, {
         is_deleted: 1,
         deleted_at: new Date().toISOString(),
@@ -527,9 +535,12 @@ export function createOrderService(
     async restoreOrderItem(orderItemId, context = { role: "admin" }) {
       const id = s(orderItemId);
       if (!id) throw new Error("order_item_id is required");
-      if (s(context?.role).toLowerCase() !== "admin") throw new Error("Only admin can restore order item.");
+      const role = s(context?.role).toLowerCase();
       const prev = await orderItemRepo.getById(id);
       if (!prev) throw new Error("Order item not found");
+      const order = await orderRepo.getById(prev.order_id);
+      if (!order) throw new Error("Order not found");
+      assertOrderCanEditItemFields({ role, status: order.status, fields: ["is_deleted"] });
       const updated = await orderItemRepo.update(id, {
         is_deleted: 0,
         deleted_at: null,

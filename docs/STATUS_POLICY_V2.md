@@ -52,6 +52,15 @@ If policy changes, update this file first, then update:
 - `investor`: read-only
 - `customer`: no shipment access
 
+### Field-level shipment item policy (canonical)
+
+- `needed_qty`: admin/ops in `draft|in_transit|received`
+- `arrived_qty`: admin/ops in `received`
+- `damaged_qty|expired_qty|stolen_qty|other_qty`: admin/ops in `received`
+- `delivered_qty`: admin/ops in `received`
+- `unit_*_weight_g|received_weight_g`: admin/ops in `draft|in_transit|received`
+- `purchase_unit_gbp|total_value_gbp|order_refs`: admin/ops in `draft|in_transit|received`
+
 ---
 
 ## Order Policy
@@ -98,6 +107,15 @@ If policy changes, update this file first, then update:
 - `sales`: read-only
 - `investor`: read-only
 
+### Field-level order-item policy (canonical)
+
+- `customer_counter_offer_price_bdt`: customer in `priced|under_review`; admin in `submitted|priced|under_review|finalized`
+- `offered_price_bdt|offer_price_bdt_on_purchase|offer_price_bdt_on_total|offer_price_mode|profit_rate|final_price_bdt`: admin in `submitted|priced|under_review|finalized`
+- `needed_quantity`: admin in non-cancelled; ops in `submitted|priced|under_review|finalized|processing|partially_delivered`
+- `delivered_quantity`: manual edit blocked (derived from allocation sync)
+- `purchase_price_gbp`: admin in non-cancelled
+- soft delete / restore: admin in non-cancelled
+
 ### Terminal behavior
 
 - `cancelled`: locked
@@ -133,6 +151,7 @@ When you change policy later, run this checklist:
 
 1. Update this file (`docs/STATUS_POLICY_V2.md`)
 2. Update `web/src/domain/status/policy.js`
+   - keep transition map + field-level guards canonical here
 3. Update affected services:
    - `web/src/services/orders/orderService.js`
    - `web/src/services/shipments/shipmentService.js`
