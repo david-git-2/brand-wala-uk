@@ -111,7 +111,7 @@ export default function NavBar() {
             </div>
 
             {/* Middle: Desktop links */}
-            <div className="hidden flex-1 items-center justify-center md:flex">
+            <div className="hidden flex-1 items-center justify-center lg:flex">
               <div className="flex items-center gap-1 rounded-2xl border border-border bg-muted/70 p-1">
                 {links.map((link) => (
                   <NavLink
@@ -199,7 +199,7 @@ export default function NavBar() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-xl md:hidden"
+                    className="rounded-xl lg:hidden"
                     aria-label="Open menu"
                   >
                     <Menu className="h-5 w-5" />
