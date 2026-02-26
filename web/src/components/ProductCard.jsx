@@ -196,17 +196,18 @@ export default function ProductCard({ product }) {
             <Button
               type="button"
               variant="destructive"
+              size="icon"
               onClick={() => remove(key)}
               disabled={busy}
-              className="rounded-xl gap-2"
-              title="Remove from cart"
+              className="h-9 w-9 rounded-xl"
+              title="Delete from cart"
+              aria-label="Delete from cart"
             >
               {op === "remove" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Trash2 className="h-4 w-4" />
               )}
-              {op === "remove" ? "Removing..." : "Remove"}
             </Button>
           </div>
         )}

@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { minCaseSize, useCart } from "../cart/CartProvider";
 import PlaceOrderDialog from "../components/PlaceOrderDialog";
+import ConfirmDeleteDialog from "../components/common/ConfirmDeleteDialog";
 
 // shadcn/ui
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,7 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // icons
-import { Loader2, Minus, Plus, Trash2 } from "lucide-react";
+import { Loader2, Minus, Plus, Save, Trash2 } from "lucide-react";
 
 function toDirectGoogleImageUrl(url) {
   if (!url) return "";
@@ -33,12 +34,12 @@ function toDirectGoogleImageUrl(url) {
 // ----------------------------
 function CartSkeleton({ rows = 3 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {Array.from({ length: rows }).map((_, i) => (
-        <Card key={i} className="rounded-2xl border border-border bg-card">
-          <CardContent className="p-3">
-            <div className="flex gap-3">
-              <Skeleton className="h-20 w-20 rounded-xl" />
+        <Card key={i} className="rounded-xl border border-border bg-card">
+          <CardContent className="p-2.5">
+            <div className="flex gap-2.5">
+              <Skeleton className="h-14 w-14 rounded-lg" />
 
               <div className="min-w-0 flex-1">
                 <Skeleton className="h-3 w-20" />
@@ -52,14 +53,14 @@ function CartSkeleton({ rows = 3 }) {
                   <Skeleton className="h-4 w-16" />
                 </div>
 
-                <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="mt-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Skeleton className="h-9 w-9 rounded-xl" />
-                    <Skeleton className="h-9 w-24 rounded-xl" />
-                    <Skeleton className="h-9 w-9 rounded-xl" />
-                    <Skeleton className="h-8 w-16 rounded-full" />
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <Skeleton className="h-8 w-20 rounded-lg" />
+                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <Skeleton className="h-8 w-8 rounded-lg" />
                   </div>
-                  <Skeleton className="h-9 w-24 rounded-xl" />
+                  <Skeleton className="h-8 w-8 rounded-lg" />
                 </div>
 
                 <div className="mt-2">
@@ -93,6 +94,7 @@ export default function Cart() {
   const [savingKey, setSavingKey] = useState(null);
 
   const [placeOpen, setPlaceOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [orderError, setOrderError] = useState("");
 
@@ -170,10 +172,15 @@ export default function Cart() {
     }
   }
 
+  async function onConfirmClear() {
+    await clear();
+    setClearOpen(false);
+  }
+
   return (
-    <div className="mx-auto w-full max-w-4xl p-4 md:p-6">
+    <div className="mx-auto w-full max-w-4xl p-3 md:p-5">
       {/* Header */}
-      <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-foreground">Cart</h1>
           <p className="text-sm text-muted-foreground">
@@ -184,8 +191,8 @@ export default function Cart() {
         {items.length > 0 && (
           <Button
             variant="outline"
-            className="rounded-xl"
-            onClick={clear}
+            className="w-full rounded-xl sm:w-auto"
+            onClick={() => setClearOpen(true)}
             disabled={loading || creatingOrder}
           >
             {loading ? (
@@ -210,7 +217,7 @@ export default function Cart() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {items.map((it) => {
             const p = it.product;
             const step = minCaseSize(p);
@@ -226,19 +233,19 @@ export default function Cart() {
               <Card
                 key={it.key}
                 className={[
-                  "rounded-2xl border border-border bg-card shadow-sm",
+                  "rounded-xl border border-border bg-card shadow-sm",
                   busy ? "opacity-70" : "",
                 ].join(" ")}
               >
-                <CardContent className="p-3">
-                  <div className="flex gap-3">
+                <CardContent className="p-2.5">
+                  <div className="flex gap-2.5">
                     {/* Image */}
-                    <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-muted">
+                    <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-white">
                       {src ? (
                         <img
                           src={src}
                           alt={p.name}
-                          className="h-20 w-20 object-contain"
+                          className="h-14 w-14 object-contain"
                           loading="lazy"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
@@ -250,18 +257,18 @@ export default function Cart() {
 
                     {/* Content */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                             {p.brand}
                           </div>
-                          <div className="truncate text-base font-semibold text-foreground">
+                          <div className="line-clamp-2 text-sm font-semibold leading-tight text-foreground">
                             {p.name}
                           </div>
                         </div>
 
                         {canSeePrice ? (
-                          <div className="shrink-0 text-sm font-semibold text-foreground">
+                          <div className="shrink-0 text-xs font-semibold text-foreground">
                             £{Number(p.price ?? 0).toFixed(2)}
                           </div>
                         ) : (
@@ -271,7 +278,7 @@ export default function Cart() {
                         )}
                       </div>
 
-                      <div className="mt-2 flex items-center justify-between gap-3">
+                      <div className="mt-1.5 flex items-center justify-between gap-2">
                         <div className="text-xs text-muted-foreground">
                           Step:{" "}
                           <span className="font-medium text-foreground">
@@ -279,20 +286,20 @@ export default function Cart() {
                           </span>
                         </div>
 
-                        <Badge variant="secondary" className="rounded-full">
+                        <Badge variant="secondary" className="rounded-full text-[10px]">
                           Case {step}
                         </Badge>
                       </div>
 
-                      <Separator className="my-3" />
+                      <Separator className="my-2" />
 
                       {/* Controls */}
-                      <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-9 w-9 rounded-xl"
+                            className="h-8 w-8 rounded-lg"
                             onClick={() => bumpQty(it, -1)}
                             disabled={busy || loading || creatingOrder}
                             title={`- ${step}`}
@@ -301,12 +308,12 @@ export default function Cart() {
                             <Minus className="h-4 w-4" />
                           </Button>
 
-                          <div className="min-w-[110px] text-center">
-                            <div className="text-sm font-semibold text-foreground">
+                          <div className="min-w-[84px] text-center">
+                            <div className="text-xs font-semibold text-foreground">
                               {draftQty}
                             </div>
 
-                            <div className="text-[11px] text-muted-foreground">
+                            <div className="text-[10px] text-muted-foreground">
                               {savingKey === it.key ? (
                                 <span className="inline-flex items-center justify-center gap-2">
                                   <Loader2 className="h-3 w-3 animate-spin" />
@@ -323,7 +330,7 @@ export default function Cart() {
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-9 w-9 rounded-xl"
+                            className="h-8 w-8 rounded-lg"
                             onClick={() => bumpQty(it, +1)}
                             disabled={busy || loading || creatingOrder}
                             title={`+ ${step}`}
@@ -334,17 +341,17 @@ export default function Cart() {
 
                           {dirty && (
                             <Button
+                              size="icon"
                               onClick={() => onSaveQty(it)}
                               disabled={busy || loading || creatingOrder}
-                              className="ml-2 rounded-xl"
+                              className="ml-1 h-8 w-8 rounded-lg"
+                              title="Save quantity"
+                              aria-label="Save quantity"
                             >
                               {savingKey === it.key ? (
-                                <>
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                  Save
-                                </>
+                                <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
-                                "Save"
+                                <Save className="h-4 w-4" />
                               )}
                             </Button>
                           )}
@@ -352,26 +359,23 @@ export default function Cart() {
 
                         <Button
                           variant="destructive"
-                          className="rounded-xl"
+                          size="icon"
+                          className="h-8 w-8 rounded-lg"
                           onClick={() => remove(it.key)}
                           disabled={busy || loading || creatingOrder}
+                          title="Delete item"
+                          aria-label="Delete item"
                         >
                           {op === "remove" ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Removing…
-                            </>
+                            <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
-                            <>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Remove
-                            </>
+                            <Trash2 className="h-4 w-4" />
                           )}
                         </Button>
                       </div>
 
                       {canSeePrice && (
-                        <div className="mt-2 text-xs text-muted-foreground">
+                        <div className="mt-1.5 text-[11px] text-muted-foreground">
                           Line total:{" "}
                           <span className="font-medium text-foreground">
                             £{(Number(p.price ?? 0) * draftQty).toFixed(2)}
@@ -452,6 +456,16 @@ export default function Cart() {
         loading={creatingOrder}
         error={orderError}
         userEmail={user?.email}
+      />
+
+      <ConfirmDeleteDialog
+        open={clearOpen}
+        onClose={() => setClearOpen(false)}
+        onConfirm={onConfirmClear}
+        title="Clear cart?"
+        description="This will remove all items from your cart."
+        confirmText="Clear"
+        loading={loading}
       />
     </div>
   );

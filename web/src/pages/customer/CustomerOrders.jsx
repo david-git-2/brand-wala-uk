@@ -76,15 +76,15 @@ export default function CustomerOrders() {
           </CardHeader>
           <CardContent className="space-y-3">
             {sorted.map((o, idx) => (
-              <div key={o.order_id} className="flex items-center justify-between rounded-lg border p-3">
-                <div>
+              <div key={o.order_id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                   <div className="text-sm font-semibold">#{idx + 1} {o.order_name || "Untitled"}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{o.order_id}</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{o.order_id}</div>
                   <div className="mt-1">
                     <Badge variant="secondary">{String(o.status || "submitted").toLowerCase()}</Badge>
                   </div>
                 </div>
-                <Button size="sm" onClick={() => nav(`/customer/orders/${o.order_id}`)}>View</Button>
+                <Button size="sm" className="w-full sm:w-auto" onClick={() => nav(`/customer/orders/${o.order_id}`)}>View</Button>
               </div>
             ))}
           </CardContent>

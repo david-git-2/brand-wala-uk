@@ -1,12 +1,23 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
-import { createUser, listUsers, removeUser, updateUser } from "@/firebase/users";
+import {
+  createUser,
+  listUsers,
+  removeUser,
+  updateUser,
+} from "@/firebase/users";
 import { queryKeys } from "@/lib/queryKeys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import ConfirmDeleteDialog from "@/components/common/ConfirmDeleteDialog";
@@ -40,7 +51,6 @@ export default function AdminUsers() {
   const currentEmail = String(user?.email || "").toLowerCase();
   const qc = useQueryClient();
 
-  const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [mutationError, setMutationError] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -68,16 +78,37 @@ export default function AdminUsers() {
 
   const createMutation = useMutation({
     mutationFn: createUser,
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: queryKeys.users.list() });
+    onSuccess: (_data, vars) => {
+      const row = {
+        email: String(vars?.user_email || vars?.email || "").toLowerCase(),
+        name: String(vars?.name || "").trim(),
+        role: String(vars?.role || "customer").toLowerCase(),
+        active: Number(vars?.active) === 1 ? 1 : 0,
+        can_see_price_gbp: Number(vars?.can_see_price_gbp) === 1 ? 1 : 0,
+        can_use_cart: Number(vars?.can_use_cart) === 1 ? 1 : 0,
+      };
+      qc.setQueryData(queryKeys.users.list(), (old) => {
+        const list = Array.isArray(old) ? old : [];
+        const without = list.filter((u) => String(u?.email || "").toLowerCase() !== row.email);
+        return [...without, row].sort((a, b) => String(a.email || "").localeCompare(String(b.email || "")));
+      });
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ email, patch }) => updateUser(email, patch),
     onSuccess: async (_data, vars) => {
-      await qc.invalidateQueries({ queryKey: queryKeys.users.list() });
-      await qc.invalidateQueries({ queryKey: queryKeys.users.detail(vars?.email || "") });
+      const target = String(vars?.email || "").toLowerCase();
+      qc.setQueryData(queryKeys.users.list(), (old) => {
+        const list = Array.isArray(old) ? old : [];
+        return list.map((u) => {
+          if (String(u?.email || "").toLowerCase() !== target) return u;
+          return { ...u, ...vars.patch };
+        });
+      });
+      await qc.invalidateQueries({
+        queryKey: queryKeys.users.detail(target),
+      });
       if (String(vars?.email || "").toLowerCase() === currentEmail) {
         await qc.invalidateQueries({ queryKey: queryKeys.auth.me() });
       }
@@ -87,8 +118,14 @@ export default function AdminUsers() {
   const removeMutation = useMutation({
     mutationFn: removeUser,
     onSuccess: async (data, email) => {
-      await qc.invalidateQueries({ queryKey: queryKeys.users.list() });
-      await qc.invalidateQueries({ queryKey: queryKeys.users.detail(email || "") });
+      const target = String(email || "").toLowerCase();
+      qc.setQueryData(queryKeys.users.list(), (old) => {
+        const list = Array.isArray(old) ? old : [];
+        return list.filter((u) => String(u?.email || "").toLowerCase() !== target);
+      });
+      await qc.invalidateQueries({
+        queryKey: queryKeys.users.detail(email || ""),
+      });
       if (String(email || "").toLowerCase() === currentEmail) {
         await qc.invalidateQueries({ queryKey: queryKeys.auth.me() });
       }
@@ -110,7 +147,6 @@ export default function AdminUsers() {
 
   async function handleCreate(e) {
     e.preventDefault();
-    setSaving(true);
     setMutationError("");
     try {
       await createMutation.mutateAsync({
@@ -132,32 +168,24 @@ export default function AdminUsers() {
       });
     } catch (e2) {
       setMutationError(e2?.message || "Failed to create user");
-    } finally {
-      setSaving(false);
     }
   }
 
   async function handleUpdate(userEmail, patch) {
-    setSaving(true);
     setMutationError("");
     try {
       await updateMutation.mutateAsync({ email: userEmail, patch });
     } catch (e) {
       setMutationError(e?.message || "Failed to update user");
-    } finally {
-      setSaving(false);
     }
   }
 
   async function handleDelete(userEmail) {
-    setSaving(true);
     setMutationError("");
     try {
       await removeMutation.mutateAsync(userEmail);
     } catch (e) {
       setMutationError(e?.message || "Failed to delete user");
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -168,13 +196,13 @@ export default function AdminUsers() {
 
   const loading = usersQuery.isLoading;
   const error = mutationError || usersQuery.error?.message || "";
+  const saving = createMutation.isPending || updateMutation.isPending || removeMutation.isPending;
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight">Admin Users</h1>
-          <p className="text-sm text-muted-foreground">Firebase users CRUD (Firestore `users` collection).</p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -185,28 +213,48 @@ export default function AdminUsers() {
             <CardContent>
               <form className="space-y-3" onSubmit={handleCreate}>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Email</label>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Email
+                  </label>
                   <Input
                     value={createForm.user_email}
-                    onChange={(e) => setCreateForm((s) => ({ ...s, user_email: e.target.value }))}
+                    onChange={(e) =>
+                      setCreateForm((s) => ({
+                        ...s,
+                        user_email: e.target.value,
+                      }))
+                    }
                     placeholder="user@example.com"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Name
+                  </label>
                   <Input
                     value={createForm.name}
-                    onChange={(e) => setCreateForm((s) => ({ ...s, name: e.target.value }))}
+                    onChange={(e) =>
+                      setCreateForm((s) => ({ ...s, name: e.target.value }))
+                    }
                     placeholder="Full name"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Role</label>
-                  <Select value={createForm.role} onValueChange={(v) => setCreateForm((s) => ({ ...s, role: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Role
+                  </label>
+                  <Select
+                    value={createForm.role}
+                    onValueChange={(v) =>
+                      setCreateForm((s) => ({ ...s, role: v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="customer">customer</SelectItem>
                       <SelectItem value="admin">admin</SelectItem>
@@ -215,36 +263,57 @@ export default function AdminUsers() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Active</label>
-                    <Select value={createForm.active} onValueChange={(v) => setCreateForm((s) => ({ ...s, active: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                  <div className="flex flex-col">
+                    <label className="mb-1 block min-h-8 text-xs font-medium text-muted-foreground">
+                      Active
+                    </label>
+                    <Select
+                      value={createForm.active}
+                      onValueChange={(v) =>
+                        setCreateForm((s) => ({ ...s, active: v }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="1">1</SelectItem>
                         <SelectItem value="0">0</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Can See Pound Price</label>
+                  <div className="flex flex-col">
+                    <label className="mb-1 block min-h-8 text-xs font-medium text-muted-foreground">
+                      Can See Pound Price
+                    </label>
                     <Select
                       value={createForm.can_see_price_gbp}
-                      onValueChange={(v) => setCreateForm((s) => ({ ...s, can_see_price_gbp: v }))}
+                      onValueChange={(v) =>
+                        setCreateForm((s) => ({ ...s, can_see_price_gbp: v }))
+                      }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="1">1</SelectItem>
                         <SelectItem value="0">0</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Can Use Cart</label>
+                  <div className="flex flex-col">
+                    <label className="mb-1 block min-h-8 text-xs font-medium text-muted-foreground">
+                      Can Use Cart
+                    </label>
                     <Select
                       value={createForm.can_use_cart}
-                      onValueChange={(v) => setCreateForm((s) => ({ ...s, can_use_cart: v }))}
+                      onValueChange={(v) =>
+                        setCreateForm((s) => ({ ...s, can_use_cart: v }))
+                      }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="1">1</SelectItem>
                         <SelectItem value="0">0</SelectItem>
@@ -263,7 +332,9 @@ export default function AdminUsers() {
           <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle className="text-base">Users ({filtered.length})</CardTitle>
+                <CardTitle className="text-base">
+                  Users ({filtered.length})
+                </CardTitle>
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
@@ -282,35 +353,53 @@ export default function AdminUsers() {
               {loading ? (
                 <UsersSkeleton />
               ) : filtered.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No users found.</div>
+                <div className="text-sm text-muted-foreground">
+                  No users found.
+                </div>
               ) : (
                 <div className="space-y-2">
                   {filtered.map((u) => {
-                    const isSelf = String(u.email || "").toLowerCase() === currentEmail;
+                    const isSelf =
+                      String(u.email || "").toLowerCase() === currentEmail;
                     return (
                       <div key={u.email} className="rounded-xl border p-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
                             <div className="font-medium">{u.email}</div>
-                            <div className="text-sm text-muted-foreground">{u.name || "—"}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {u.name || "—"}
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge variant="secondary">{u.role}</Badge>
-                            <Badge variant={Number(u.active) === 1 ? "default" : "outline"}>
+                            <Badge
+                              variant={
+                                Number(u.active) === 1 ? "default" : "outline"
+                              }
+                            >
                               active:{Number(u.active) === 1 ? "1" : "0"}
                             </Badge>
-                            <Badge variant="outline">pound price:{Number(u.can_see_price_gbp) === 1 ? "1" : "0"}</Badge>
-                            <Badge variant="outline">cart:{Number(u.can_use_cart) === 1 ? "1" : "0"}</Badge>
+                            <Badge variant="outline">
+                              pound price:
+                              {Number(u.can_see_price_gbp) === 1 ? "1" : "0"}
+                            </Badge>
+                            <Badge variant="outline">
+                              cart:{Number(u.can_use_cart) === 1 ? "1" : "0"}
+                            </Badge>
                           </div>
                         </div>
 
                         <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-6">
                           <Select
                             value={String(u.role || "customer")}
-                            onValueChange={(v) => handleUpdate(u.email, { role: v })}
+                            onValueChange={(v) =>
+                              handleUpdate(u.email, { role: v })
+                            }
                             disabled={saving || isSelf}
                           >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="customer">customer</SelectItem>
                               <SelectItem value="admin">admin</SelectItem>
@@ -319,10 +408,14 @@ export default function AdminUsers() {
 
                           <Select
                             value={String(Number(u.active) === 1 ? "1" : "0")}
-                            onValueChange={(v) => handleUpdate(u.email, { active: Number(v) })}
+                            onValueChange={(v) =>
+                              handleUpdate(u.email, { active: Number(v) })
+                            }
                             disabled={saving || isSelf}
                           >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="1">active=1</SelectItem>
                               <SelectItem value="0">active=0</SelectItem>
@@ -330,11 +423,19 @@ export default function AdminUsers() {
                           </Select>
 
                           <Select
-                            value={String(Number(u.can_see_price_gbp) === 1 ? "1" : "0")}
-                            onValueChange={(v) => handleUpdate(u.email, { can_see_price_gbp: Number(v) })}
+                            value={String(
+                              Number(u.can_see_price_gbp) === 1 ? "1" : "0",
+                            )}
+                            onValueChange={(v) =>
+                              handleUpdate(u.email, {
+                                can_see_price_gbp: Number(v),
+                              })
+                            }
                             disabled={saving}
                           >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="1">price=1</SelectItem>
                               <SelectItem value="0">price=0</SelectItem>
@@ -342,11 +443,17 @@ export default function AdminUsers() {
                           </Select>
 
                           <Select
-                            value={String(Number(u.can_use_cart) === 1 ? "1" : "0")}
-                            onValueChange={(v) => handleUpdate(u.email, { can_use_cart: Number(v) })}
+                            value={String(
+                              Number(u.can_use_cart) === 1 ? "1" : "0",
+                            )}
+                            onValueChange={(v) =>
+                              handleUpdate(u.email, { can_use_cart: Number(v) })
+                            }
                             disabled={saving}
                           >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="1">cart=1</SelectItem>
                               <SelectItem value="0">cart=0</SelectItem>

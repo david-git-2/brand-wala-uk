@@ -21,7 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2 } from "lucide-react";
+import { Loader2, Save, Trash2 } from "lucide-react";
 
 function n(v, d = 0) {
   const x = Number(v);
@@ -659,7 +659,7 @@ export default function AdminShipmentDetails() {
                           <tr key={id}>
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-2">
-                                <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                                <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                                   {imgUrl ? <img src={imgUrl} alt={meta.name || meta.product_id || "product"} className="h-full w-full object-cover" /> : null}
                                 </div>
                                 <div className="min-w-0">
@@ -680,8 +680,15 @@ export default function AdminShipmentDetails() {
                             <td className="px-3 py-2">cost {fmt0(a.total_cost_bdt)}<br />profit {fmt0(a.profit_bdt)}</td>
                             <td className="px-3 py-2">
                               <div className="flex gap-2">
-                                <Button size="sm" variant="outline" disabled={busy} onClick={() => saveAllocationRow(a)}>
-                                  {busy ? "Saving..." : "Save"}
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  disabled={busy}
+                                  onClick={() => saveAllocationRow(a)}
+                                  title="Save allocation"
+                                  aria-label="Save allocation"
+                                >
+                                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                                 </Button>
                                 <Button
                                   size="icon"
@@ -729,7 +736,7 @@ export default function AdminShipmentDetails() {
                         <tr key={r.allocation_id}>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
-                              <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                              <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                                 {r.image_url ? <img src={r.image_url} alt={r.name} className="h-full w-full object-cover" /> : null}
                               </div>
                               <div className="font-medium">{r.name}</div>
@@ -778,7 +785,7 @@ export default function AdminShipmentDetails() {
                         <tr key={r.order_item_id}>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
-                              <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                              <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                                 {toDirectGoogleImageUrl(r.image_url) ? (
                                   <img src={toDirectGoogleImageUrl(r.image_url)} alt={r.name || r.product_id || "product"} className="h-full w-full object-cover" />
                                 ) : null}
@@ -824,7 +831,7 @@ export default function AdminShipmentDetails() {
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                           <div>
                             <div className="flex items-center gap-2">
-                              <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                              <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                                 {img ? <img src={img} alt={r.name} className="h-full w-full object-cover" /> : null}
                               </div>
                               <div className="font-semibold">{r.name}</div>
@@ -887,8 +894,14 @@ export default function AdminShipmentDetails() {
                               />
                             </div>
                             <div className="pt-4">
-                              <Button size="sm" onClick={() => saveSnapshotRow(r)} disabled={busy}>
-                                {busy ? "Saving..." : "Save"}
+                              <Button
+                                size="icon"
+                                onClick={() => saveSnapshotRow(r)}
+                                disabled={busy}
+                                title="Save snapshot"
+                                aria-label="Save snapshot"
+                              >
+                                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                               </Button>
                             </div>
                           </div>

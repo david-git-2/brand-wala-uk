@@ -161,7 +161,7 @@ export default function Products() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         {/* Filters */}
         <Card className="mb-6 rounded-2xl">
           <CardContent className="p-4">
@@ -203,7 +203,7 @@ export default function Products() {
               </div>
 
               {/* Right side: counts + clear */}
-              <div className="flex items-center justify-between gap-3 md:justify-end">
+              <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between md:justify-end">
                 <div className="text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">
                     {loading ? "—" : showingCount}
@@ -217,7 +217,7 @@ export default function Products() {
 
                 <Button
                   variant="outline"
-                  className="rounded-xl"
+                  className="w-full rounded-xl sm:w-auto"
                   onClick={() => {
                     setQ("");
                     setBrand("ALL");

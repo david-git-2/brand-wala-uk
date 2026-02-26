@@ -1246,7 +1246,7 @@ export default function AdminOrderDetails() {
               <div className="space-y-3">
                 {items.map((it) => (
                   <div key={it.order_item_id} className="flex items-center gap-3 rounded-lg border p-3">
-                    <div className="h-14 w-14 overflow-hidden rounded-lg bg-muted">
+                    <div className="h-14 w-14 overflow-hidden rounded-lg bg-white">
                       {it.image_url ? (
                         <img
                           src={imgUrl(it.image_url)}
@@ -1339,7 +1339,7 @@ export default function AdminOrderDetails() {
                   <div key={a.allocation_id} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-xs">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                        <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                           {itemByOrderItemId[String(a.order_item_id || "")]?.image_url ? (
                             <img
                               src={imgUrl(itemByOrderItemId[String(a.order_item_id || "")]?.image_url)}
@@ -1357,12 +1357,14 @@ export default function AdminOrderDetails() {
                       </div>
                     </div>
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="destructive"
                       disabled={removeBusyId === a.allocation_id}
                       onClick={() => removeFromShipment(a)}
+                      title="Delete from shipment"
+                      aria-label="Delete from shipment"
                     >
-                      {removeBusyId === a.allocation_id ? "Removing..." : "Remove"}
+                      {removeBusyId === a.allocation_id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                     </Button>
                   </div>
                 ))}
@@ -1384,8 +1386,14 @@ export default function AdminOrderDetails() {
               <>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={copyWeightNames}>Copy Product Names</Button>
-                  <Button onClick={saveAllWeights} disabled={weightSaving}>
-                    {weightSaving ? "Saving..." : "Save All Weights"}
+                  <Button
+                    size="icon"
+                    onClick={saveAllWeights}
+                    disabled={weightSaving}
+                    title="Save all weights"
+                    aria-label="Save all weights"
+                  >
+                    {weightSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   </Button>
                 </div>
 
@@ -1407,7 +1415,7 @@ export default function AdminOrderDetails() {
                             <tr key={id}>
                               <td className="px-3 py-2">
                                 <div className="flex items-center gap-2">
-                                  <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                                  <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                                     {meta.image_url ? (
                                       <img src={imgUrl(meta.image_url)} alt={meta.name || "item"} className="h-full w-full object-cover" />
                                     ) : null}
@@ -1512,8 +1520,14 @@ export default function AdminOrderDetails() {
                       Shipment Avg Rate: {shipmentAvgRate(selectedShipment)} • Cargo/KG: {gbp(selectedShipment?.cargo_cost_per_kg)}
                     </div>
                     {priceEditMode ? (
-                      <Button onClick={saveCalculatedPrice} disabled={savingCalculatedPrice || !priceCalculatedRows.length}>
-                        {savingCalculatedPrice ? "Saving..." : "Save Calculated Selling Price"}
+                      <Button
+                        size="icon"
+                        onClick={saveCalculatedPrice}
+                        disabled={savingCalculatedPrice || !priceCalculatedRows.length}
+                        title="Save calculated selling price"
+                        aria-label="Save calculated selling price"
+                      >
+                        {savingCalculatedPrice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                       </Button>
                     ) : (
                       <Button variant="outline" onClick={() => setPriceEditMode(true)}>
@@ -1579,7 +1593,7 @@ export default function AdminOrderDetails() {
                           <tr key={r.order_item_id}>
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-2">
-                                <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                                <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                                   {r.image_url ? <img src={imgUrl(r.image_url)} alt={r.name} className="h-full w-full object-cover" /> : null}
                                 </div>
                                 <div className="font-medium">{r.name}</div>
@@ -1735,7 +1749,7 @@ export default function AdminOrderDetails() {
                       <tr key={id}>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
-                            <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                            <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                               {r.image_url ? <img src={imgUrl(r.image_url)} alt={r.name} className="h-full w-full object-cover" /> : null}
                             </div>
                             <div className="font-medium">{r.name}</div>
@@ -1940,7 +1954,7 @@ export default function AdminOrderDetails() {
                           <tr key={r.order_item_id}>
                             <td className="px-3 py-2">
                               <div className="flex items-center gap-2">
-                                <div className="h-8 w-8 overflow-hidden rounded border bg-muted">
+                                <div className="h-8 w-8 overflow-hidden rounded border bg-white">
                                   {r.image_url ? <img src={imgUrl(r.image_url)} alt={r.name} className="h-full w-full object-cover" /> : null}
                                 </div>
                                 <div>{r.name}</div>
@@ -1973,7 +1987,7 @@ export default function AdminOrderDetails() {
                       <th className="px-3 py-2">Offer Price (GBP)</th>
                       <th className="px-3 py-2">Offer Price (BDT)</th>
                       <th className="px-3 py-2">Profit (%)</th>
-                      <th className="px-3 py-2">Save</th>
+                      <th className="px-3 py-2">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -1987,7 +2001,7 @@ export default function AdminOrderDetails() {
                             <>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
-                            <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                            <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                               {r.image_url ? <img src={imgUrl(r.image_url)} alt={r.name} className="h-full w-full object-cover" /> : null}
                             </div>
                             <div className="font-medium">{r.name}</div>

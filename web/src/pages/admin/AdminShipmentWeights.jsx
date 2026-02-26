@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, Save } from "lucide-react";
 
 function n(v, d = 0) {
   const x = Number(v);
@@ -285,8 +286,14 @@ export default function AdminShipmentWeights() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={onCopyNames} disabled={!rows.length}>Copy Product Names</Button>
-          <Button onClick={onSaveAll} disabled={saving || dirtyCount === 0}>
-            {saving ? "Saving..." : `Save All (${dirtyCount})`}
+          <Button
+            size="icon"
+            onClick={onSaveAll}
+            disabled={saving || dirtyCount === 0}
+            title={`Save all (${dirtyCount})`}
+            aria-label={`Save all (${dirtyCount})`}
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           </Button>
         </div>
       </div>
@@ -318,7 +325,7 @@ export default function AdminShipmentWeights() {
                       <td className="px-3 py-2">{idx + 1}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
-                          <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                          <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                             {toDirectGoogleImageUrl(r.image_url) ? (
                               <img src={toDirectGoogleImageUrl(r.image_url)} alt={r.name} className="h-full w-full object-cover" />
                             ) : null}

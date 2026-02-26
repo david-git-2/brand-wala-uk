@@ -234,13 +234,13 @@ export default function CustomerOrderDetails() {
 
   return (
     <div className="mx-auto w-full max-w-5xl p-4 md:p-6">
-      <div className="mb-4 flex items-start justify-between gap-2">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Order Items</h1>
           <div className="text-sm text-muted-foreground">{order?.order_name || orderId}</div>
           {order?.status ? <Badge className="mt-2" variant="secondary">{String(order.status || "").toLowerCase()}</Badge> : null}
         </div>
-        <Button variant="outline" onClick={() => nav("/customer/orders")}>Back</Button>
+        <Button className="w-full sm:w-auto" variant="outline" onClick={() => nav("/customer/orders")}>Back</Button>
       </div>
 
       {err ? (
@@ -263,10 +263,10 @@ export default function CustomerOrderDetails() {
             <>
               {canShowPrice ? (
                 <>
-                  <div className="mb-3 flex items-center gap-2">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                     <div className="text-xs text-muted-foreground">Save each item. Then change order status.</div>
-                    <div className="ml-auto">
-                      <Button size="sm" onClick={submitDecision} disabled={savingDecision || !allItemsSaved || editLocked}>
+                    <div className="sm:ml-auto">
+                      <Button className="w-full sm:w-auto" size="sm" onClick={submitDecision} disabled={savingDecision || !allItemsSaved || editLocked}>
                         {savingDecision ? "Updating..." : "Change Order Status"}
                       </Button>
                     </div>
@@ -291,7 +291,113 @@ export default function CustomerOrderDetails() {
                   Price is hidden. Ask admin to move order status to <span className="font-medium">priced</span> or later.
                 </div>
               )}
-              <div className="overflow-x-auto">
+              <div className="space-y-3 md:hidden">
+                {items.map((it) => {
+                  const cs = it?.calculated_selling_price || {};
+                  const id = String(it.order_item_id || "");
+                  const offered = showFinalizedView
+                    ? (showGbp
+                        ? Number(it?.final_unit_gbp ?? it?.customer_unit_gbp ?? cs?.selling_unit_gbp ?? cs?.offered_product_unit_gbp ?? 0)
+                        : Number(it?.final_unit_bdt ?? it?.customer_unit_bdt ?? cs?.selling_unit_bdt ?? cs?.offered_product_unit_bdt ?? 0))
+                    : (showGbp
+                    ? Number(cs?.selling_unit_gbp ?? cs?.offered_product_unit_gbp ?? 0)
+                    : Number(cs?.selling_unit_bdt ?? cs?.offered_product_unit_bdt ?? 0));
+                  const cargo = showGbp ? Number(cs?.cargo_unit_gbp || 0) : Number(cs?.cargo_unit_bdt || 0);
+                  const purchase = showGbp
+                    ? Number(it?.buy_price_gbp || 0)
+                    : Number(cs?.profit_rate_pct || 0) >= 0
+                      ? offered / (1 + Number(cs?.profit_rate_pct || 0) / 100)
+                      : 0;
+                  const hasSaved = showGbp
+                    ? Number(it?.customer_unit_gbp || 0) > 0
+                    : Number(it?.customer_unit_bdt || 0) > 0;
+                  const isEditable = rowEditMode[id] ?? !hasSaved;
+                  return (
+                    <div key={id} className="rounded-lg border p-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-10 w-10 overflow-hidden rounded border bg-white">
+                          {it.image_url ? <img src={imgUrl(it.image_url)} alt={it.name} className="h-full w-full object-cover" /> : null}
+                        </div>
+                        <div className="min-w-0 text-sm font-medium">{it.name || "Item"}</div>
+                      </div>
+                      {canShowPrice ? (
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded border p-2">
+                            <div className="text-muted-foreground">{showFinalizedView ? "Final Qty" : "Changed Qty"}</div>
+                            {showFinalizedView ? (
+                              <div className="font-semibold">
+                                {Math.max(0, Math.round(Number(it?.final_quantity ?? it?.customer_changed_quantity ?? it?.ordered_quantity ?? 0)))}
+                              </div>
+                            ) : (
+                              <input
+                                className="mt-1 h-8 w-full rounded-md border bg-background px-2"
+                                value={String(
+                                  draft[`qty__${id}`] ??
+                                    Math.max(0, Math.round(Number(it?.customer_changed_quantity ?? it?.ordered_quantity ?? 0))),
+                                )}
+                                onChange={(e) => setDraft((p) => ({ ...p, [`qty__${id}`]: e.target.value }))}
+                                inputMode="numeric"
+                                disabled={editLocked || !isEditable}
+                              />
+                            )}
+                          </div>
+                          <div className="rounded border p-2">
+                            <div className="text-muted-foreground">{showFinalizedView ? "Final / Unit" : "Offered / Unit"}</div>
+                            <div className="font-semibold">{showGbp ? gbp(offered) : bdt(offered)}</div>
+                          </div>
+                          {showGbp ? (
+                            <>
+                              <div className="rounded border p-2">
+                                <div className="text-muted-foreground">Unit Purchase</div>
+                                <div className="font-semibold">{gbp(purchase)}</div>
+                              </div>
+                              <div className="rounded border p-2">
+                                <div className="text-muted-foreground">Cargo / Unit</div>
+                                <div className="font-semibold">{gbp(cargo)}</div>
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {canShowPrice && !showFinalizedView ? (
+                        <div className="mt-3 flex items-center gap-2">
+                          <input
+                            className="h-8 flex-1 rounded-md border bg-background px-2 text-xs"
+                            value={String(draft[id] ?? "")}
+                            onChange={(e) => setDraft((p) => ({ ...p, [id]: e.target.value }))}
+                            inputMode="decimal"
+                            disabled={editLocked || !isEditable}
+                          />
+                          {hasSaved && !isEditable ? (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => setRowEditMode((p) => ({ ...p, [id]: true }))}
+                              aria-label="Edit item"
+                              title="Edit"
+                              disabled={editLocked}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => saveItemDecision(it)}
+                              disabled={!!rowSaving[id] || editLocked}
+                              aria-label="Save item"
+                              title="Save"
+                            >
+                              {rowSaving[id] ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                            </Button>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="min-w-full text-xs">
                   <thead className="bg-muted/40 text-muted-foreground">
                     <tr className="text-left">
@@ -331,7 +437,7 @@ export default function CustomerOrderDetails() {
                         <tr key={id}>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
-                              <div className="h-9 w-9 overflow-hidden rounded border bg-muted">
+                              <div className="h-9 w-9 overflow-hidden rounded border bg-white">
                                 {it.image_url ? <img src={imgUrl(it.image_url)} alt={it.name} className="h-full w-full object-cover" /> : null}
                               </div>
                               <div className="font-medium">{it.name || "Item"}</div>

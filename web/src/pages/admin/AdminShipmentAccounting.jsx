@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2 } from "lucide-react";
+import { Loader2, Save, Trash2 } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 
 function n(v, d = 0) {
@@ -302,8 +302,14 @@ export default function AdminShipmentAccounting() {
                 </Select>
               </div>
             </div>
-            <Button onClick={saveAccounting} disabled={saving || !selectedShipmentId}>
-              {saving ? "Saving..." : "Save Accounting"}
+            <Button
+              size="icon"
+              onClick={saveAccounting}
+              disabled={saving || !selectedShipmentId}
+              title="Save accounting"
+              aria-label="Save accounting"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             </Button>
           </CardContent>
         </Card>
@@ -363,4 +369,3 @@ export default function AdminShipmentAccounting() {
     </div>
   );
 }
-

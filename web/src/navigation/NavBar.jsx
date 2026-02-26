@@ -32,6 +32,7 @@ import {
 // icons
 import {
   Menu,
+  X,
   LogOut,
   ChevronDown,
   Boxes,
@@ -205,7 +206,7 @@ export default function NavBar() {
                   </Button>
                 </SheetTrigger>
 
-                <SheetContent side="right" className="w-[86%] max-w-sm p-0">
+                <SheetContent side="right" className="w-[86%] max-w-sm p-0 [&>button]:hidden">
                   <SheetHeader className="border-b border-border px-4 py-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -220,6 +221,15 @@ export default function NavBar() {
                           Menu
                         </SheetTitle>
                       </div>
+                      <Button
+                        variant="default"
+                        size="icon"
+                        className="rounded-xl"
+                        aria-label="Close menu"
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
                     </div>
                   </SheetHeader>
 
