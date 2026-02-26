@@ -46,11 +46,6 @@
       "x-read-only": true,
       "x-derived-from": "shipment_allocations.customer_delivered_qty summed by order_item_id"
     },
-    "primary_shipment_id": {
-      "type": "string",
-      "x-optional-helper": true,
-      "x-not-source-of-truth": true
-    },
     "purchase_price_gbp": { "type": "number", "minimum": 0 },
     "offer_price_bdt_on_purchase": { "type": "number", "minimum": 0 },
     "offer_price_bdt_on_total": { "type": "number", "minimum": 0 },
@@ -59,6 +54,15 @@
     "customer_counter_offer_price_bdt": { "type": "number", "minimum": 0 },
     "final_price_bdt": { "type": "number", "minimum": 0 },
     "profit_rate": { "type": "number", "minimum": 0 },
+    "is_deleted": { "type": "integer", "enum": [0, 1] },
+    "deleted_at": { "type": "timestamp" },
+    "deleted_by": { "type": "string" },
+    "delete_reason": { "type": "string" },
+    "calc_block_reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "calculated_snapshot": { "type": "object" },
     "created_at": { "type": "timestamp" },
     "updated_at": { "type": "timestamp" }
   }

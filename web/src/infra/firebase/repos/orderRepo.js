@@ -25,6 +25,12 @@ const COLL = "orders";
 
 export function createFirebaseOrderRepo() {
   return {
+    async nextOrderSl() {
+      const rows = await this.listAll();
+      const maxSl = rows.reduce((mx, r) => Math.max(mx, Math.round(n(r.order_sl, 0))), 0);
+      return maxSl + 1;
+    },
+
     async getById(orderId) {
       const id = s(orderId);
       if (!id) return null;
@@ -60,6 +66,7 @@ export function createFirebaseOrderRepo() {
         shipment_id: s(payload.shipment_id),
         total_needed_qty: n(payload.total_needed_qty, 0),
         total_delivered_qty: n(payload.total_delivered_qty, 0),
+        shipment_count: n(payload.shipment_count, 0),
         total_purchase_gbp: n(payload.total_purchase_gbp, 0),
         total_final_bdt: n(payload.total_final_bdt, 0),
         created_at: serverTimestamp(),
@@ -81,6 +88,7 @@ export function createFirebaseOrderRepo() {
       if ("shipment_id" in patch) row.shipment_id = s(patch.shipment_id);
       if ("total_needed_qty" in patch) row.total_needed_qty = n(patch.total_needed_qty, 0);
       if ("total_delivered_qty" in patch) row.total_delivered_qty = n(patch.total_delivered_qty, 0);
+      if ("shipment_count" in patch) row.shipment_count = n(patch.shipment_count, 0);
       if ("total_purchase_gbp" in patch) row.total_purchase_gbp = n(patch.total_purchase_gbp, 0);
       if ("total_final_bdt" in patch) row.total_final_bdt = n(patch.total_final_bdt, 0);
       await updateDoc(doc(firestoreDb, COLL, id), row);

@@ -36,6 +36,11 @@
 
     "purchase_unit_gbp_snapshot": { "type": "number", "minimum": 0 },
     "line_purchase_gbp": { "type": "number", "minimum": 0 },
+    "allocation_status": { "type": "string", "enum": ["active", "removed"] },
+    "is_removed": { "type": "integer", "enum": [0, 1] },
+    "removed_at": { "type": "timestamp" },
+    "removed_by": { "type": "string" },
+    "remove_reason": { "type": "string" },
 
     "created_at": { "type": "timestamp" },
     "updated_at": { "type": "timestamp" }

@@ -56,17 +56,25 @@ This plan is ordered so independent modules are finished first, then dependent w
    - `shipmentRepo`
    - `shipmentItemRepo` (`shipment_product_agg` read model)
    - `shipmentAllocationRepo` (per-order split/audit source)
+   - `shipmentItemSourceRepo` (procurement source split)
    - `shipmentService`
 2. Complete shipment header CRUD UI.
 3. Complete shipment aggregate product CRUD UI (`needed/arrived/damaged/expired/stolen/other`).
-4. Keep per-order shipment split in `shipment_allocations` and sync to order item delivery caches.
-5. Pull default weights from `product_weights` for new shipment aggregate rows.
-6. Finalize rules/indexes for shipment queries.
-7. Validate:
+4. Add procurement source layer (separate from customer fulfillment):
+   - demand from `order_items`
+   - aggregated buy list in `shipment_product_agg`
+   - source planning/execution in `shipment_item_sources`
+   - keep customer fulfillment in `shipment_allocations`
+5. Keep per-order shipment split in `shipment_allocations` and sync to order item delivery caches.
+6. Pull default weights from `product_weights` for new shipment aggregate rows.
+7. Finalize rules/indexes for shipment queries.
+8. Validate:
    - create/edit/delete shipment
    - add/edit shipment aggregate rows
+   - add/edit shipment source rows
+   - `sum(source.planned_qty)` coverage vs aggregate needed qty
    - default weight behavior
-   - aggregate/split sync behavior
+   - aggregate/source/split sync behavior
 
 ---
 
@@ -96,7 +104,7 @@ This plan is ordered so independent modules are finished first, then dependent w
 
 ## Phase 3: Dependent Modules
 
-### 6) Orders + Order Items
+### 6) Orders + Order Items done
 
 1. Finalize:
    - `orderRepo`
@@ -106,7 +114,7 @@ This plan is ordered so independent modules are finished first, then dependent w
 3. Wire cart -> order creation flow.
 4. Keep initial lifecycle simple (`submitted`) until workflow service is ready.
 
-### 7) Calculation Engine (Pure Domain Layer)
+### 7) Calculation Engine (Pure Domain Layer) done
 
 1. Implement pure calc module (no Firestore I/O):
    - purchase/cargo/unit totals
@@ -133,6 +141,19 @@ This plan is ordered so independent modules are finished first, then dependent w
    - `order_items.delivered_quantity` (derived/cache)
    - order totals/status rollups
 3. Provide deterministic recompute action/job for recovery.
+
+### 9.1) Procurement Source Integration
+
+1. Add `procurement_sources` master (supplier/channel).
+2. Add `shipment_item_sources` rows per shipment product:
+   - `source_id`, `planned_qty`, `received_qty`
+   - purchase price and currency normalization
+3. Aggregate checks:
+   - needed from `shipment_product_agg`
+   - planned/received from `shipment_item_sources`
+4. Keep procurement separate from customer delivery:
+   - do not mix source rows with `shipment_allocations`
+5. Expose warnings when procurement planned < needed.
 
 ---
 

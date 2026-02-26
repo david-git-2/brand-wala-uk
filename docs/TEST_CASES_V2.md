@@ -126,6 +126,14 @@
 - Steps: admin reads/writes
 - Expected: allowed
 
+### S-08 Procurement source rows
+- Steps: add source rows for one shipment product (multiple sources)
+- Expected: source rows persist with planned/received qty and normalized pricing fields
+
+### S-09 Procurement coverage check
+- Steps: keep aggregate needed qty higher than summed source planned qty
+- Expected: warning shown (`planned < needed`) and no silent pass
+
 ---
 
 ## Product Weights

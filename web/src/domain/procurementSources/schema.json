@@ -1,0 +1,31 @@
+{
+  "$id": "procurement_sources",
+  "collection": "procurement_sources",
+  "documentId": "{source_id}",
+  "description": "Master list of procurement/supplier sources used for shipment sourcing decisions.",
+  "required": [
+    "source_id",
+    "name",
+    "type",
+    "currency",
+    "active",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "source_id": { "type": "string" },
+    "name": { "type": "string" },
+    "type": {
+      "type": "string",
+      "enum": ["uk_supplier", "importer", "local_market", "other"]
+    },
+    "currency": { "type": "string", "enum": ["GBP", "BDT", "USD", "EUR", "OTHER"] },
+    "active": { "type": "integer", "enum": [0, 1] },
+    "contact_name": { "type": "string" },
+    "contact_phone": { "type": "string" },
+    "contact_email": { "type": "string" },
+    "notes": { "type": "string" },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  }
+}

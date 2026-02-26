@@ -116,7 +116,11 @@
         │   │   └── schema.json
         │   ├── shipmentAllocations
         │   │   └── schema.json
+        │   ├── shipmentItemSources
+        │   │   └── schema.json
         │   ├── shipmentItems
+        │   │   └── schema.json
+        │   ├── procurementSources
         │   │   └── schema.json
         │   ├── orders
         │   │   ├── calc.js

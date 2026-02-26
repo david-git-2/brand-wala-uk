@@ -32,13 +32,15 @@ export function createFirebaseOrderItemRepo() {
       return snap.exists() ? { order_item_id: snap.id, ...snap.data() } : null;
     },
 
-    async listByOrderId(orderId) {
+    async listByOrderId(orderId, options = {}) {
       const oid = s(orderId);
       if (!oid) return [];
       const snap = await getDocs(
         query(collection(firestoreDb, COLL), where("order_id", "==", oid), orderBy("item_sl", "asc")),
       );
-      return snap.docs.map((d) => ({ order_item_id: d.id, ...d.data() }));
+      const rows = snap.docs.map((d) => ({ order_item_id: d.id, ...d.data() }));
+      if (options?.includeDeleted) return rows;
+      return rows.filter((r) => Number(r.is_deleted || 0) !== 1);
     },
 
     async create(payload = {}) {
@@ -65,6 +67,10 @@ export function createFirebaseOrderItemRepo() {
         customer_counter_offer_price_bdt: n(payload.customer_counter_offer_price_bdt, 0),
         final_price_bdt: n(payload.final_price_bdt, 0),
         profit_rate: n(payload.profit_rate, 0),
+        is_deleted: Number(payload.is_deleted || 0) === 1 ? 1 : 0,
+        deleted_at: payload.deleted_at || null,
+        deleted_by: s(payload.deleted_by).toLowerCase(),
+        delete_reason: s(payload.delete_reason),
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
@@ -105,6 +111,16 @@ export function createFirebaseOrderItemRepo() {
       nums.forEach((f) => {
         if (f in patch) row[f] = n(patch[f], 0);
       });
+      if ("is_deleted" in patch) row.is_deleted = Number(patch.is_deleted || 0) === 1 ? 1 : 0;
+      if ("deleted_at" in patch) row.deleted_at = patch.deleted_at || null;
+      if ("deleted_by" in patch) row.deleted_by = s(patch.deleted_by).toLowerCase();
+      if ("delete_reason" in patch) row.delete_reason = s(patch.delete_reason);
+      if ("calculated_snapshot" in patch) row.calculated_snapshot = patch.calculated_snapshot || null;
+      if ("calc_block_reasons" in patch) {
+        row.calc_block_reasons = Array.isArray(patch.calc_block_reasons)
+          ? patch.calc_block_reasons.map((x) => s(x)).filter(Boolean)
+          : [];
+      }
       await updateDoc(doc(firestoreDb, COLL, id), row);
       return this.getById(id);
     },

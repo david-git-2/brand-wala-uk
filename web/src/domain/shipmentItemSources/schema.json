@@ -1,0 +1,44 @@
+{
+  "$id": "shipment_item_sources",
+  "collection": "shipment_item_sources",
+  "documentId": "{shipment_id}__{product_id}__{source_id}",
+  "description": "Procurement plan/execution rows for a shipment product by source. Keeps sourcing separate from customer fulfillment allocations.",
+  "required": [
+    "shipment_id",
+    "product_id",
+    "source_id",
+    "planned_qty",
+    "received_qty",
+    "purchase_unit_price",
+    "purchase_currency",
+    "fx_rate_to_gbp",
+    "purchase_unit_gbp",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "shipment_id": { "type": "string" },
+    "product_id": { "type": "string" },
+    "source_id": { "type": "string" },
+    "product_code": { "type": "string" },
+    "barcode": { "type": "string" },
+    "name": { "type": "string" },
+    "planned_qty": { "type": "number", "minimum": 0 },
+    "received_qty": { "type": "number", "minimum": 0 },
+    "purchase_unit_price": { "type": "number", "minimum": 0 },
+    "purchase_currency": { "type": "string", "enum": ["GBP", "BDT", "USD", "EUR", "OTHER"] },
+    "fx_rate_to_gbp": { "type": "number", "minimum": 0 },
+    "purchase_unit_gbp": { "type": "number", "minimum": 0 },
+    "line_planned_gbp": { "type": "number", "minimum": 0 },
+    "line_received_gbp": { "type": "number", "minimum": 0 },
+    "notes": { "type": "string" },
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  },
+  "indexes_needed": [
+    ["shipment_id", "product_id"],
+    ["shipment_id", "source_id"],
+    ["shipment_id", "updated_at"],
+    ["product_id", "updated_at"]
+  ]
+}

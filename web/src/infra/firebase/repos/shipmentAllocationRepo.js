@@ -52,6 +52,27 @@ export function createFirebaseShipmentAllocationRepo() {
       return snap.docs.map((d) => ({ allocation_id: d.id, ...d.data() }));
     },
 
+    async listByOrderId(orderId) {
+      const oid = s(orderId);
+      if (!oid) return [];
+      const snap = await getDocs(query(collection(firestoreDb, COLL), where("order_id", "==", oid)));
+      return snap.docs.map((d) => ({ allocation_id: d.id, ...d.data() }));
+    },
+
+    async listByOrderItemAndShipment(orderItemId, shipmentId) {
+      const oiid = s(orderItemId);
+      const sid = s(shipmentId);
+      if (!oiid || !sid) return [];
+      const snap = await getDocs(
+        query(
+          collection(firestoreDb, COLL),
+          where("order_item_id", "==", oiid),
+          where("shipment_id", "==", sid),
+        ),
+      );
+      return snap.docs.map((d) => ({ allocation_id: d.id, ...d.data() }));
+    },
+
     async create(payload = {}) {
       const id = s(payload.allocation_id) || makeId();
       const row = {
@@ -72,6 +93,11 @@ export function createFirebaseShipmentAllocationRepo() {
         unit_total_weight_g: Math.round(n(payload.unit_total_weight_g, 0)),
         purchase_unit_gbp_snapshot: n(payload.purchase_unit_gbp_snapshot, 0),
         line_purchase_gbp: n(payload.line_purchase_gbp, 0),
+        allocation_status: s(payload.allocation_status || "active").toLowerCase(),
+        is_removed: Number(payload.is_removed || 0) === 1 ? 1 : 0,
+        removed_at: payload.removed_at || null,
+        removed_by: s(payload.removed_by).toLowerCase(),
+        remove_reason: s(payload.remove_reason),
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
@@ -104,6 +130,11 @@ export function createFirebaseShipmentAllocationRepo() {
       numFields.forEach((f) => {
         if (f in patch) row[f] = n(patch[f], 0);
       });
+      if ("allocation_status" in patch) row.allocation_status = s(patch.allocation_status).toLowerCase();
+      if ("is_removed" in patch) row.is_removed = Number(patch.is_removed || 0) === 1 ? 1 : 0;
+      if ("removed_at" in patch) row.removed_at = patch.removed_at || null;
+      if ("removed_by" in patch) row.removed_by = s(patch.removed_by).toLowerCase();
+      if ("remove_reason" in patch) row.remove_reason = s(patch.remove_reason);
       await updateDoc(doc(firestoreDb, COLL, id), row);
       return this.getById(id);
     },

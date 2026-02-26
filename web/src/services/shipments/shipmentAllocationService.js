@@ -1,4 +1,5 @@
 import { shipmentAllocationRepo as defaultRepo } from "@/infra/firebase/repos/shipmentAllocationRepo";
+import { orderItemRepo as defaultOrderItemRepo } from "@/infra/firebase/repos/orderItemRepo";
 
 function s(v) {
   return String(v || "").trim();
@@ -50,16 +51,32 @@ function normalizePatch(patch = {}) {
     "unit_total_weight_g",
     "purchase_unit_gbp_snapshot",
     "line_purchase_gbp",
+    "allocation_status",
+    "is_removed",
+    "removed_at",
+    "removed_by",
+    "remove_reason",
   ];
   fields.forEach((f) => {
     if (!(f in patch)) return;
-    if (f.endsWith("_id")) out[f] = s(patch[f]);
+    if (f.endsWith("_id") || f.endsWith("_status") || f.endsWith("_by") || f.endsWith("_reason")) out[f] = s(patch[f]);
+    else if (f.endsWith("_at")) out[f] = patch[f] || null;
     else out[f] = n(patch[f], 0);
   });
   return out;
 }
 
-export function createShipmentAllocationService(repo = defaultRepo) {
+export function createShipmentAllocationService(repo = defaultRepo, orderItemRepo = defaultOrderItemRepo) {
+  async function syncDelivered(orderItemId) {
+    const oid = s(orderItemId);
+    if (!oid) return;
+    const rows = await repo.listByOrderItemId(oid);
+    const delivered = rows
+      .filter((r) => Number(r.is_removed || 0) !== 1)
+      .reduce((sum, r) => sum + n(r.customer_delivered_qty, 0), 0);
+    await orderItemRepo.update(oid, { delivered_quantity: delivered });
+  }
+
   return {
     async getById(allocationId) {
       return repo.getById(s(allocationId));
@@ -70,18 +87,31 @@ export function createShipmentAllocationService(repo = defaultRepo) {
     async listByOrderItemId(orderItemId) {
       return repo.listByOrderItemId(s(orderItemId));
     },
+    async listByOrderId(orderId) {
+      return repo.listByOrderId(s(orderId));
+    },
+    async listByOrderItemAndShipment(orderItemId, shipmentId) {
+      return repo.listByOrderItemAndShipment(s(orderItemId), s(shipmentId));
+    },
     async createAllocation(input) {
-      return repo.create(normalizeCreateInput(input));
+      const created = await repo.create(normalizeCreateInput(input));
+      await syncDelivered(created?.order_item_id);
+      return created;
     },
     async updateAllocation(allocationId, patch) {
       const id = s(allocationId);
       if (!id) throw new Error("allocation_id is required");
-      return repo.update(id, normalizePatch(patch));
+      const updated = await repo.update(id, normalizePatch(patch));
+      await syncDelivered(updated?.order_item_id);
+      return updated;
     },
     async removeAllocation(allocationId) {
       const id = s(allocationId);
       if (!id) throw new Error("allocation_id is required");
-      return repo.remove(id);
+      const prev = await repo.getById(id);
+      const out = await repo.remove(id);
+      await syncDelivered(prev?.order_item_id);
+      return out;
     },
   };
 }

@@ -5,7 +5,8 @@ import { firebaseApp, firebaseAuth } from "@/firebase/client";
 import { getUserProfileByEmail } from "@/firebase/users";
 
 const AuthCtx = createContext(null);
-const firebaseFunctions = getFunctions(firebaseApp);
+const functionsRegion = String(window.BW_CONFIG?.APP?.functionsRegion || "us-central1").trim();
+const firebaseFunctions = getFunctions(firebaseApp, functionsRegion);
 const syncMyClaimsFn = httpsCallable(firebaseFunctions, "syncMyClaims");
 
 function toBool(v, fallback = false) {

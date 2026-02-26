@@ -101,6 +101,13 @@ service cloud.firestore {
         get(/databases/$(database)/documents/orders/$(orderId)).data.creator_email == myEmailLower();
     }
 
+    function canMutateOrderItem(orderId) {
+      return isAdmin() || (
+        isActive() &&
+        isOrderOwner(orderId)
+      );
+    }
+
     function isOrderOwnerAfter(orderId) {
       return existsAfter(/databases/$(database)/documents/orders/$(orderId)) &&
         getAfter(/databases/$(database)/documents/orders/$(orderId)).data.creator_email == myEmailLower();
@@ -184,8 +191,13 @@ service cloud.firestore {
     }
 
     match /order_items/{orderItemId} {
-      allow read: if canReadBackoffice();
-      allow write: if canWriteOps();
+      allow get, list: if canReadBackoffice() || (
+        isActive() &&
+        isOrderOwner(resource.data.order_id)
+      );
+      allow create: if canMutateOrderItem(request.resource.data.order_id);
+      allow update: if canMutateOrderItem(resource.data.order_id);
+      allow delete: if isAdmin();
     }
 
     match /shipment_items/{shipmentItemId} {

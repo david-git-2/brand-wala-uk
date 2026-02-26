@@ -5,6 +5,7 @@ Source-of-truth model:
 
 - Commercial truth: `orders`, `order_items`
 - Operational aggregate input: `shipments`, `shipment_product_agg`
+- Procurement source execution: `procurement_sources`, `shipment_item_sources`
 - Per-order shipment split/audit: `shipment_allocations`
 - Weights master: `product_weights`
 - Finance: `shipment_accounting`, `investors`, `investor_transactions`
@@ -81,6 +82,33 @@ Fields:
 - weight snapshot: `unit_product_weight_g`, `unit_package_weight_g`, `unit_total_weight_g`
 - purchase snapshot: `purchase_unit_gbp_snapshot`, `line_purchase_gbp`
 - timestamps
+
+## `procurement_sources/{source_id}`
+
+Purpose:
+- supplier/channel master list for sourcing decisions
+
+Fields:
+- `source_id`, `name`, `type`, `currency`, `active`
+- optional contact/meta fields
+- timestamps
+
+## `shipment_item_sources/{shipment_id__product_id__source_id}`
+
+Purpose:
+- procurement planning/execution per source for each shipment product
+
+Fields:
+- identity: `shipment_id`, `product_id`, `source_id`
+- quantities: `planned_qty`, `received_qty`
+- pricing: `purchase_unit_price`, `purchase_currency`, `fx_rate_to_gbp`, `purchase_unit_gbp`
+- optional: `notes`
+- timestamps
+
+Notes:
+- demand comes from `shipment_product_agg.needed_qty_total`
+- customer fulfillment remains in `shipment_allocations`
+- use source totals for procurement coverage checks (planned/received vs needed)
 
 ## `product_weights/{weight_key}`
 
