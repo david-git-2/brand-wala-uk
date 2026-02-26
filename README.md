@@ -26,6 +26,18 @@ npm install
 npm run dev
 ```
 
+### Local Firebase config via env (recommended)
+
+Do this once on your machine:
+
+```bash
+cp /Users/david/Desktop/projects/brand-wala-uk/web/.env.example /Users/david/Desktop/projects/brand-wala-uk/web/.env
+```
+
+Then edit `web/.env` with real Firebase values.
+
+- `.env` is local-only (do not commit).
+
 ### 2) Functions
 
 ```bash
@@ -69,6 +81,27 @@ npm run fb:deploy:functions
 ```bash
 npm run fb:deploy:hosting
 ```
+
+## GitHub Pages Deploy (No Secrets In Git)
+
+This repo includes CI deploy workflow:
+
+- `/Users/david/Desktop/projects/brand-wala-uk/.github/workflows/deploy-web-gh-pages.yml`
+
+It builds frontend and deploys `web/dist` to `gh-pages` using GitHub repository
+secrets as Vite env values at build time.
+
+Set these repository secrets in GitHub:
+
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FUNCTIONS_REGION` (optional, default `us-central1`)
+
+Then push to `main` (or run workflow manually).
 
 ## Notes
 

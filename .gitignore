@@ -6,6 +6,7 @@ python/.ipynb_checkpoints/
 # react
 web/node_modules/
 web/dist/
+web/.env
 
 # misc
 .DS_Store
