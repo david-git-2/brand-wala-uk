@@ -2,7 +2,7 @@
   "$id": "shipments",
   "collection": "shipments",
   "documentId": "{shipment_id}",
-  "description": "Shipment header/config document. Item-level operational rows are stored in shipment_items.",
+  "description": "Shipment header/config. Operational rows are in shipment_product_agg and per-order splits are in shipment_allocations.",
   "required": [
     "shipment_id",
     "name",
@@ -11,8 +11,6 @@
     "gbp_rate_product_bdt",
     "gbp_rate_cargo_bdt",
     "gbp_rate_avg_bdt",
-    "order_date",
-    "arrived_date",
     "total_value_gbp",
     "total_weight_g",
     "received_weight_g",
@@ -34,21 +32,21 @@
       "minimum": 0,
       "x-computed": true,
       "x-read-only": true,
-      "x-derived-from": "shipment_items.total_value_gbp"
+      "x-derived-from": "shipment_product_agg + shipment_allocations"
     },
     "total_weight_g": {
       "type": "number",
       "minimum": 0,
       "x-computed": true,
       "x-read-only": true,
-      "x-derived-from": "shipment_items.unit_total_weight_g * shipment_items.needed_qty"
+      "x-derived-from": "shipment_product_agg"
     },
     "received_weight_g": {
       "type": "number",
       "minimum": 0,
       "x-computed": true,
       "x-read-only": true,
-      "x-derived-from": "shipment_items.received_weight_g"
+      "x-derived-from": "shipment_product_agg"
     },
     "eta_date": { "type": "string" },
     "notes": { "type": "string" },

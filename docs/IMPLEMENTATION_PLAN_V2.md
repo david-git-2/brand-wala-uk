@@ -54,29 +54,32 @@ This plan is ordered so independent modules are finished first, then dependent w
 
 1. Finalize:
    - `shipmentRepo`
-   - `shipmentItemRepo`
+   - `shipmentItemRepo` (`shipment_product_agg` read model)
+   - `shipmentAllocationRepo` (per-order split/audit source)
    - `shipmentService`
 2. Complete shipment header CRUD UI.
-3. Complete shipment items CRUD UI (`needed/arrived/damaged/expired/stolen/other`).
-4. Pull default weights from `product_weights` for new shipment item rows.
-5. Finalize rules/indexes for shipment queries.
-6. Validate:
+3. Complete shipment aggregate product CRUD UI (`needed/arrived/damaged/expired/stolen/other`).
+4. Keep per-order shipment split in `shipment_allocations` and sync to order item delivery caches.
+5. Pull default weights from `product_weights` for new shipment aggregate rows.
+6. Finalize rules/indexes for shipment queries.
+7. Validate:
    - create/edit/delete shipment
-   - add/edit shipment item
+   - add/edit shipment aggregate rows
    - default weight behavior
+   - aggregate/split sync behavior
 
 ---
 
 ## Phase 2: Semi-Independent Financial Modules
 
-### 4) Product Weights (Independent Utility)
+### 4) Product Weights (Independent Utility) done
 
 1. Finalize `productWeightRepo` + `productWeightService`.
 2. Build/manage weight master UI (bulk paste/edit).
 3. Add optional action: update weight master from shipment-item edits.
 4. Validate key resolution (`weight_key`, `product_id`, `barcode`).
 
-### 5) Shipment Accounting + Investors
+### 5) Shipment Accounting + Investors done
 
 1. Finalize:
    - `shipmentAccountingRepo` (+ payment methods)

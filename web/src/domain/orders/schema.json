@@ -2,7 +2,7 @@
   "$id": "orders",
   "collection": "orders",
   "documentId": "{order_id}",
-  "description": "Order header document (order items are in separate collection: order_items)",
+  "description": "Order header document. Order items are stored in top-level order_items collection.",
   "required": [
     "order_id",
     "order_sl",
@@ -11,7 +11,6 @@
     "creator_name",
     "creator_role",
     "status",
-    "shipment_id",
     "total_needed_qty",
     "total_delivered_qty",
     "total_purchase_gbp",
@@ -25,7 +24,7 @@
     "order_name": { "type": "string" },
     "creator_email": { "type": "string", "format": "email" },
     "creator_name": { "type": "string" },
-    "creator_role": { "type": "string", "enum": ["admin", "customer"] },
+    "creator_role": { "type": "string", "enum": ["admin", "ops", "sales", "customer", "investor"] },
     "status": {
       "type": "string",
       "enum": [
@@ -40,7 +39,6 @@
         "cancelled"
       ]
     },
-    "shipment_id": { "type": "string" },
     "total_needed_qty": { "type": "number", "minimum": 0 },
     "total_delivered_qty": { "type": "number", "minimum": 0 },
     "total_purchase_gbp": { "type": "number", "minimum": 0 },

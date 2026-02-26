@@ -24,6 +24,30 @@ function ng(v, d = 0) {
   return Math.max(0, Math.round(n(v, d)));
 }
 
+function weightLogId() {
+  const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  const rnd = Math.floor(Math.random() * 900000) + 100000;
+  return `PWL_${ts}_${rnd}`;
+}
+
+async function writeWeightLog({ action, weight_key, actor_email, source, before = null, after = null }) {
+  const id = weightLogId();
+  await setDoc(
+    doc(firestoreDb, "product_weight_logs", id),
+    {
+      log_id: id,
+      action: s(action).toLowerCase(),
+      weight_key: s(weight_key),
+      actor_email: s(actor_email).toLowerCase(),
+      source: s(source || "manual"),
+      before,
+      after,
+      created_at: serverTimestamp(),
+    },
+    { merge: false },
+  );
+}
+
 export function buildWeightKey({ product_code, barcode, product_id } = {}) {
   const pc = s(product_code);
   const bc = s(barcode);
@@ -51,6 +75,7 @@ export async function listProductWeights() {
 export async function upsertProductWeight(payload = {}) {
   const weight_key = s(payload.weight_key) || buildWeightKey(payload);
   if (!weight_key) throw new Error("Missing weight key (product_code-barcode/barcode/product_id)");
+  const prev = await getProductWeight(weight_key);
 
   const unit_product_weight_g = ng(payload.unit_product_weight_g, 0);
   const unit_package_weight_g = ng(payload.unit_package_weight_g, 0);
@@ -74,12 +99,31 @@ export async function upsertProductWeight(payload = {}) {
     { merge: true },
   );
 
-  return getProductWeight(weight_key);
+  const next = await getProductWeight(weight_key);
+  await writeWeightLog({
+    action: prev ? "update" : "create",
+    weight_key,
+    actor_email: payload.actor_email,
+    source: payload.source,
+    before: prev,
+    after: next,
+  });
+  return next;
 }
 
-export async function deleteProductWeight(weightKey) {
+export async function deleteProductWeight(weightKey, meta = {}) {
   const key = s(weightKey);
   if (!key) return;
+  const prev = await getProductWeight(key);
   await deleteDoc(doc(firestoreDb, "product_weights", key));
+  if (prev) {
+    await writeWeightLog({
+      action: "delete",
+      weight_key: key,
+      actor_email: meta.actor_email,
+      source: meta.source,
+      before: prev,
+      after: null,
+    });
+  }
 }
-

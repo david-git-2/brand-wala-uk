@@ -6,8 +6,8 @@ import {
   getDocs,
   orderBy,
   query,
-  serverTimestamp,
   setDoc,
+  serverTimestamp,
   updateDoc,
   where,
 } from "firebase/firestore/lite";
@@ -37,6 +37,34 @@ function normalizeWeightKey(payload = {}) {
 }
 
 const COLL = "product_weights";
+const LOG_COLL = "product_weight_logs";
+
+function logId() {
+  const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  const rnd = Math.floor(Math.random() * 900000) + 100000;
+  return `PWL_${ts}_${rnd}`;
+}
+
+async function writeWeightLog({
+  action,
+  weightKey,
+  actorEmail,
+  source,
+  before = null,
+  after = null,
+}) {
+  const id = logId();
+  await setDoc(doc(firestoreDb, LOG_COLL, id), {
+    log_id: id,
+    action: s(action).toLowerCase(),
+    weight_key: s(weightKey),
+    actor_email: s(actorEmail).toLowerCase(),
+    source: s(source || "manual"),
+    before,
+    after,
+    created_at: serverTimestamp(),
+  });
+}
 
 export function createFirebaseProductWeightRepo() {
   return {
@@ -80,12 +108,23 @@ export function createFirebaseProductWeightRepo() {
         updated_at: serverTimestamp(),
       };
       await setDoc(doc(firestoreDb, COLL, id), row, { merge: false });
-      return this.getById(id);
+      const created = await this.getById(id);
+      await writeWeightLog({
+        action: "create",
+        weightKey: id,
+        actorEmail: payload.actor_email,
+        source: payload.source,
+        before: null,
+        after: created,
+      });
+      return created;
     },
 
     async update(weightKey, patch = {}) {
       const id = s(weightKey);
       if (!id) throw new Error("Missing weight_key");
+      const prev = await this.getById(id);
+      if (!prev) throw new Error("Weight not found");
       const row = { updated_at: serverTimestamp() };
       const strFields = ["product_id", "product_code", "barcode", "name", "source"];
       strFields.forEach((f) => {
@@ -96,13 +135,33 @@ export function createFirebaseProductWeightRepo() {
         if (f in patch) row[f] = ni(patch[f], 0);
       });
       await updateDoc(doc(firestoreDb, COLL, id), row);
-      return this.getById(id);
+      const next = await this.getById(id);
+      await writeWeightLog({
+        action: "update",
+        weightKey: id,
+        actorEmail: patch.actor_email,
+        source: patch.source,
+        before: prev,
+        after: next,
+      });
+      return next;
     },
 
-    async remove(weightKey) {
+    async remove(weightKey, meta = {}) {
       const id = s(weightKey);
       if (!id) return { success: true };
+      const prev = await this.getById(id);
       await deleteDoc(doc(firestoreDb, COLL, id));
+      if (prev) {
+        await writeWeightLog({
+          action: "delete",
+          weightKey: id,
+          actorEmail: meta.actor_email,
+          source: meta.source,
+          before: prev,
+          after: null,
+        });
+      }
       return { success: true };
     },
   };

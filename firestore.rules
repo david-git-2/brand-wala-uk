@@ -176,7 +176,11 @@ service cloud.firestore {
 
     match /product_weights/{weightKey} {
       allow read: if canReadBackoffice();
-      allow write: if canWriteOps();
+      allow write: if isAdmin();
+    }
+
+    match /product_weight_logs/{logId} {
+      allow read, write: if isAdmin();
     }
 
     match /order_items/{orderItemId} {
@@ -190,23 +194,23 @@ service cloud.firestore {
     }
 
     match /shipment_accounting/{shipmentId} {
-      allow read: if canReadBackoffice();
-      allow write: if canWriteOps();
+      allow read: if isAdmin();
+      allow write: if isAdmin();
 
       match /customer_payments/{paymentId} {
-        allow read: if canReadBackoffice();
-        allow write: if canWriteOps();
+        allow read: if isAdmin();
+        allow write: if isAdmin();
       }
     }
 
     match /investors/{investorId} {
-      allow read: if canReadBackoffice();
-      allow write: if canWriteOps();
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /investor_transactions/{txnId} {
-      allow read: if canReadBackoffice();
-      allow write: if canWriteOps();
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /status_overrides/{overrideId} {

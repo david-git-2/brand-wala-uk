@@ -18,6 +18,8 @@ import AdminShipments from "../pages/admin/AdminShipments";
 import AdminShipmentDetails from "../pages/admin/AdminShipmentDetails";
 import AdminShipmentWeights from "../pages/admin/AdminShipmentWeights";
 import AdminUsers from "../pages/admin/AdminUsers";
+import AdminShipmentAccounting from "../pages/admin/AdminShipmentAccounting";
+import AdminInvestors from "../pages/admin/AdminInvestors";
 import AboutAdmin from "../pages/about/AboutAdmin";
 import AboutCustomer from "../pages/about/AboutCustomer";
 
@@ -185,6 +187,28 @@ export default function AppRoutes() {
           <ProtectedRoute>
             <AdminRoute>
               <AdminUsers />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin/finance/shipment-accounting"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminShipmentAccounting />
+            </AdminRoute>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin/finance/investors"
+        element={
+          <ProtectedRoute>
+            <AdminRoute>
+              <AdminInvestors />
             </AdminRoute>
           </ProtectedRoute>
         }

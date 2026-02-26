@@ -40,6 +40,8 @@ import {
   Truck,
   Users,
   Info,
+  Landmark,
+  BadgeDollarSign,
 } from "lucide-react";
 
 function cx(...parts) {
@@ -53,6 +55,8 @@ function navIcon(label) {
   if (l.includes("order")) return ClipboardList;
   if (l.includes("shipment")) return Truck;
   if (l.includes("user")) return Users;
+  if (l.includes("account")) return BadgeDollarSign;
+  if (l.includes("investor")) return Landmark;
   if (l.includes("about")) return Info;
   return ClipboardList;
 }

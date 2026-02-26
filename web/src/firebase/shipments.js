@@ -146,6 +146,14 @@ function computeAllocationFields(a, shipment, orderItem = null) {
   };
 }
 
+function hasMissingWeight(row = {}, orderItem = null) {
+  const up = n(row?.unit_product_weight, n(orderItem?.unit_product_weight, 0));
+  const pk = n(row?.unit_package_weight, n(orderItem?.unit_package_weight, 0));
+  if (!(up > 0)) return true;
+  if (pk < 0) return true;
+  return false;
+}
+
 async function syncOrderItemWeights(order_id, order_item_id, unit_product_weight, unit_package_weight) {
   const oid = String(order_id || "").trim();
   const oiid = String(order_item_id || "").trim();
@@ -558,12 +566,32 @@ export async function recalcShipmentAllocations(shipment_id) {
   const snap = await getDocs(
     query(collection(firestoreDb, "shipment_allocations"), where("shipment_id", "==", sid)),
   );
-  await Promise.all(
+  const rows = await Promise.all(
     snap.docs.map(async (d) => {
       const prev = d.data();
       const item = await getOrderItemByRef(prev.order_id, prev.order_item_id);
+      return { docRef: d.ref, prev, item };
+    }),
+  );
+  const missingRows = rows
+    .filter(({ prev, item }) => hasMissingWeight(prev, item))
+    .map(({ prev, item }) => ({
+      allocation_id: String(prev?.allocation_id || ""),
+      order_item_id: String(prev?.order_item_id || ""),
+      name: String(item?.name || item?.product_id || prev?.product_id || "item"),
+    }));
+  if (missingRows.length) {
+    const names = missingRows.slice(0, 5).map((r) => r.name).join(", ");
+    const more = missingRows.length > 5 ? ` +${missingRows.length - 5} more` : "";
+    throw new Error(
+      `Missing weight for ${missingRows.length} shipment row(s). Set product/package weight first: ${names}${more}`,
+    );
+  }
+
+  await Promise.all(
+    rows.map(async ({ docRef, prev, item }) => {
       const computed = computeAllocationFields(prev, ship, item);
-      await updateDoc(d.ref, {
+      await updateDoc(docRef, {
         ...computed,
         updated_at: serverTimestamp(),
       });

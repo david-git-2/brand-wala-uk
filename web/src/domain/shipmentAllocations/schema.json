@@ -1,0 +1,49 @@
+{
+  "$id": "shipment_allocations",
+  "collection": "shipment_allocations",
+  "documentId": "{allocation_id}",
+  "description": "Per-order-item split rows for shipment execution and audit. Source-of-truth for order delivery sync.",
+  "required": [
+    "allocation_id",
+    "shipment_id",
+    "product_id",
+    "order_id",
+    "order_item_id",
+    "planned_qty",
+    "customer_delivered_qty",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "allocation_id": { "type": "string" },
+    "shipment_id": { "type": "string" },
+    "product_id": { "type": "string" },
+    "order_id": { "type": "string" },
+    "order_item_id": { "type": "string" },
+
+    "planned_qty": { "type": "number", "minimum": 0 },
+    "arrived_qty_share": { "type": "number", "minimum": 0 },
+    "damaged_qty_share": { "type": "number", "minimum": 0 },
+    "expired_qty_share": { "type": "number", "minimum": 0 },
+    "stolen_qty_share": { "type": "number", "minimum": 0 },
+    "other_qty_share": { "type": "number", "minimum": 0 },
+
+    "customer_delivered_qty": { "type": "number", "minimum": 0 },
+
+    "unit_product_weight_g": { "type": "integer", "minimum": 0 },
+    "unit_package_weight_g": { "type": "integer", "minimum": 0 },
+    "unit_total_weight_g": { "type": "integer", "minimum": 0 },
+
+    "purchase_unit_gbp_snapshot": { "type": "number", "minimum": 0 },
+    "line_purchase_gbp": { "type": "number", "minimum": 0 },
+
+    "created_at": { "type": "timestamp" },
+    "updated_at": { "type": "timestamp" }
+  },
+  "indexes_needed": [
+    ["shipment_id", "updated_at"],
+    ["order_id", "updated_at"],
+    ["order_item_id", "updated_at"],
+    ["shipment_id", "order_item_id"]
+  ]
+}

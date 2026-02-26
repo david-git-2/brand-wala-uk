@@ -146,6 +146,17 @@
 - Steps: non-admin write attempt
 - Expected: denied
 
+### W-05 Shipment recompute blocked on missing weights
+- Steps: keep `unit_product_weight_g<=0` for at least one shipment row and run recompute
+- Expected: recompute fails with clear missing-weight error
+
+### W-06 Audit logs written
+- Steps: create/update/delete a weight profile
+- Expected: matching records added in `product_weight_logs`
+
+Detailed checklist:
+- `docs/TEST_CASES_WEIGHTS.md`
+
 ---
 
 ## Orders + Order Items

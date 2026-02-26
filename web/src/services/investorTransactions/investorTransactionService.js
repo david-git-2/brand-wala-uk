@@ -23,9 +23,33 @@ function to01(v, fallback = 0) {
   return fallback;
 }
 
+function txnId() {
+  const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  const rnd = Math.floor(Math.random() * 900000) + 100000;
+  return `ITX_${ts}_${rnd}`;
+}
+
+function periodKeyFromDate(isoDate) {
+  const dt = isoDate ? new Date(isoDate) : new Date();
+  if (Number.isNaN(dt.getTime())) {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function signedAmount(direction, amount) {
+  const dir = s(direction).toLowerCase();
+  const a = Math.abs(n(amount, 0));
+  return dir === "out" || dir === "debit" ? -a : a;
+}
+
 function normalizeCreateInput(input = {}) {
-  const txn_id = s(input.txn_id);
-  if (!txn_id) throw new Error("txn_id is required");
+  const txn_id = s(input.txn_id) || txnId();
+  const txn_at = input.txn_at || new Date().toISOString();
+  const period_key = s(input.period_key) || periodKeyFromDate(txn_at);
+  const fy = Number(period_key.slice(0, 4));
+  const fm = Number(period_key.slice(5, 7));
   return {
     txn_id,
     investor_id: s(input.investor_id),
@@ -36,12 +60,12 @@ function normalizeCreateInput(input = {}) {
     is_shipment_linked: to01(input.is_shipment_linked, 0),
     shipment_id: s(input.shipment_id),
     shipment_accounting_id: s(input.shipment_accounting_id),
-    fiscal_year: ni(input.fiscal_year, 0),
-    fiscal_month: Math.min(12, Math.max(1, ni(input.fiscal_month, 1))),
-    period_key: s(input.period_key),
+    fiscal_year: Number.isFinite(fy) ? fy : ni(input.fiscal_year, 0),
+    fiscal_month: Number.isFinite(fm) ? Math.min(12, Math.max(1, fm)) : Math.min(12, Math.max(1, ni(input.fiscal_month, 1))),
+    period_key,
     ref_no: s(input.ref_no),
     note: s(input.note),
-    txn_at: input.txn_at || null,
+    txn_at,
     created_by: s(input.created_by).toLowerCase(),
   };
 }
@@ -86,7 +110,14 @@ export function createInvestorTransactionService(repo = defaultRepo) {
     },
 
     async createTransaction(input) {
-      return repo.create(normalizeCreateInput(input));
+      const normalized = normalizeCreateInput(input);
+      const investorId = s(normalized.investor_id);
+      if (!investorId) throw new Error("investor_id is required");
+      const rows = await repo.listByInvestorId(investorId);
+      const prevBalance = rows.length ? n(rows[0].running_balance_bdt, 0) : 0;
+      const delta = signedAmount(normalized.direction, normalized.amount_bdt);
+      normalized.running_balance_bdt = prevBalance + delta;
+      return repo.create(normalized);
     },
 
     async updateTransaction(txnId, patch) {

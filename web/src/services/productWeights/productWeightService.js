@@ -30,12 +30,13 @@ function normalizeCreateInput(input = {}) {
     unit_package_weight_g,
     unit_total_weight_g: ni(input.unit_total_weight_g, unit_product_weight_g + unit_package_weight_g),
     source: s(input.source || "manual"),
+    actor_email: s(input.actor_email),
   };
 }
 
 function normalizePatch(patch = {}) {
   const out = {};
-  const strFields = ["product_id", "product_code", "barcode", "name", "source"];
+  const strFields = ["product_id", "product_code", "barcode", "name", "source", "actor_email"];
   strFields.forEach((f) => {
     if (f in patch) out[f] = s(patch[f]);
   });
@@ -70,10 +71,13 @@ export function createProductWeightService(repo = defaultRepo) {
       return repo.update(key, normalizePatch(patch));
     },
 
-    async removeWeight(weightKey) {
+    async removeWeight(weightKey, meta = {}) {
       const key = s(weightKey);
       if (!key) throw new Error("weight_key is required");
-      return repo.remove(key);
+      return repo.remove(key, {
+        actor_email: s(meta.actor_email),
+        source: s(meta.source || "manual"),
+      });
     },
   };
 }

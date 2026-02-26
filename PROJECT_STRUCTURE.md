@@ -114,6 +114,8 @@
         │   │   └── schema.json
         │   ├── shipmentAccounting
         │   │   └── schema.json
+        │   ├── shipmentAllocations
+        │   │   └── schema.json
         │   ├── shipmentItems
         │   │   └── schema.json
         │   ├── orders
@@ -125,9 +127,13 @@
         │   │   ├── calc.js
         │   │   ├── schema.json
         │   │   └── types.js
+        │   ├── status
+        │   │   └── policy.js
         │   ├── productWeights
         │   │   ├── schema.json
         │   │   └── types.js
+        │   ├── productWeightLogs
+        │   │   └── schema.json
         │   └── users
         │       ├── schema.json
         │       └── types.js
@@ -173,6 +179,7 @@
         │           ├── orderRepo.js
         │           ├── productWeightRepo.js
         │           ├── shipmentAccountingRepo.js
+        │           ├── shipmentAllocationRepo.js
         │           ├── shipmentItemRepo.js
         │           ├── shipmentRepo.js
         │           └── userRepo.js
@@ -191,6 +198,7 @@
         │   ├── orders
         │   │   └── orderService.js
         │   ├── shipments
+        │   │   ├── shipmentAllocationService.js
         │   │   └── shipmentService.js
         │   ├── productWeights
         │   │   └── productWeightService.js

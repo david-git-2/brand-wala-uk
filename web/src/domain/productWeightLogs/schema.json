@@ -1,0 +1,22 @@
+{
+  "$id": "product_weight_logs",
+  "collection": "product_weight_logs",
+  "documentId": "{log_id}",
+  "description": "Audit log for default weight create/update/delete operations",
+  "required": [
+    "log_id",
+    "action",
+    "weight_key",
+    "created_at"
+  ],
+  "properties": {
+    "log_id": { "type": "string" },
+    "action": { "type": "string", "enum": ["create", "update", "delete"] },
+    "weight_key": { "type": "string" },
+    "actor_email": { "type": "string" },
+    "source": { "type": "string" },
+    "before": { "type": "object" },
+    "after": { "type": "object" },
+    "created_at": { "type": "timestamp" }
+  }
+}
