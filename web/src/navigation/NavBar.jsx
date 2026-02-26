@@ -91,6 +91,7 @@ export default function NavBar() {
   const name = user?.name || "";
   const photoUrl = user?.photo_url || "";
   const fallbackText = (name || email || "U").trim().slice(0, 1).toUpperCase();
+  const fullLogoSrc = `${import.meta.env.BASE_URL}logo/BW%20logo%20full.png`;
 
   return (
     <div className="sticky top-0 z-50">
@@ -99,13 +100,12 @@ export default function NavBar() {
           <div className="flex items-center justify-between px-4 py-3 sm:px-5">
             {/* Left: Brand */}
             <div className="flex items-center gap-3">
-              <div className="rounded-xl border border-border bg-muted px-3 py-2">
-                <div className="text-sm font-extrabold tracking-tight text-foreground">
-                  {config?.brand || "BW"}
-                </div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Wholesale
-                </div>
+              <div className="rounded-xl border border-border bg-muted px-2 py-2">
+                <img
+                  src={fullLogoSrc}
+                  alt="BW full"
+                  className="h-8 w-auto object-contain"
+                />
               </div>
             </div>
 
@@ -209,10 +209,12 @@ export default function NavBar() {
                   <SheetHeader className="border-b border-border px-4 py-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="rounded-xl border border-border bg-muted px-3 py-2">
-                          <div className="text-sm font-extrabold tracking-tight text-foreground">
-                            {config?.brand || "BW"}
-                          </div>
+                        <div className="rounded-xl border border-border bg-muted px-2 py-2">
+                          <img
+                            src={fullLogoSrc}
+                            alt="BW full"
+                            className="h-7 w-auto object-contain"
+                          />
                         </div>
                         <SheetTitle className="text-sm font-semibold text-foreground">
                           Menu

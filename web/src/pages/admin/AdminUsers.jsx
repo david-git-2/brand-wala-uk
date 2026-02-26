@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { createUser, listUsers, removeUser, updateUser } from "@/firebase/users";
+import { queryKeys } from "@/lib/queryKeys";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -36,12 +38,11 @@ function UsersSkeleton({ rows = 6 }) {
 export default function AdminUsers() {
   const { user } = useAuth();
   const currentEmail = String(user?.email || "").toLowerCase();
+  const qc = useQueryClient();
 
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
-  const [users, setUsers] = useState([]);
-  const [error, setError] = useState("");
+  const [mutationError, setMutationError] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTargetEmail, setDeleteTargetEmail] = useState("");
 
@@ -54,24 +55,49 @@ export default function AdminUsers() {
     can_use_cart: "1",
   });
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const items = await listUsers();
-      setUsers(items);
-    } catch (e) {
-      setError(e?.message || "Failed to load users");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const usersQuery = useQuery({
+    queryKey: queryKeys.users.list(),
+    queryFn: listUsers,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    retry: 0,
+  });
 
-  useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+  const createMutation = useMutation({
+    mutationFn: createUser,
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: queryKeys.users.list() });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ email, patch }) => updateUser(email, patch),
+    onSuccess: async (_data, vars) => {
+      await qc.invalidateQueries({ queryKey: queryKeys.users.list() });
+      await qc.invalidateQueries({ queryKey: queryKeys.users.detail(vars?.email || "") });
+      if (String(vars?.email || "").toLowerCase() === currentEmail) {
+        await qc.invalidateQueries({ queryKey: queryKeys.auth.me() });
+      }
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: removeUser,
+    onSuccess: async (data, email) => {
+      await qc.invalidateQueries({ queryKey: queryKeys.users.list() });
+      await qc.invalidateQueries({ queryKey: queryKeys.users.detail(email || "") });
+      if (String(email || "").toLowerCase() === currentEmail) {
+        await qc.invalidateQueries({ queryKey: queryKeys.auth.me() });
+      }
+      return data;
+    },
+  });
 
   const filtered = useMemo(() => {
+    const users = usersQuery.data || [];
     const needle = q.trim().toLowerCase();
     if (!needle) return users;
     return users.filter((u) => {
@@ -80,14 +106,14 @@ export default function AdminUsers() {
       const c = String(u.role || "").toLowerCase();
       return a.includes(needle) || b.includes(needle) || c.includes(needle);
     });
-  }, [users, q]);
+  }, [usersQuery.data, q]);
 
   async function handleCreate(e) {
     e.preventDefault();
     setSaving(true);
-    setError("");
+    setMutationError("");
     try {
-      await createUser({
+      await createMutation.mutateAsync({
         user_email: createForm.user_email,
         name: createForm.name,
         role: createForm.role,
@@ -104,9 +130,8 @@ export default function AdminUsers() {
         can_see_price_gbp: "0",
         can_use_cart: "1",
       });
-      await loadUsers();
     } catch (e2) {
-      setError(e2?.message || "Failed to create user");
+      setMutationError(e2?.message || "Failed to create user");
     } finally {
       setSaving(false);
     }
@@ -114,12 +139,11 @@ export default function AdminUsers() {
 
   async function handleUpdate(userEmail, patch) {
     setSaving(true);
-    setError("");
+    setMutationError("");
     try {
-      await updateUser(userEmail, patch);
-      await loadUsers();
+      await updateMutation.mutateAsync({ email: userEmail, patch });
     } catch (e) {
-      setError(e?.message || "Failed to update user");
+      setMutationError(e?.message || "Failed to update user");
     } finally {
       setSaving(false);
     }
@@ -127,12 +151,11 @@ export default function AdminUsers() {
 
   async function handleDelete(userEmail) {
     setSaving(true);
-    setError("");
+    setMutationError("");
     try {
-      await removeUser(userEmail);
-      await loadUsers();
+      await removeMutation.mutateAsync(userEmail);
     } catch (e) {
-      setError(e?.message || "Failed to delete user");
+      setMutationError(e?.message || "Failed to delete user");
     } finally {
       setSaving(false);
     }
@@ -142,6 +165,9 @@ export default function AdminUsers() {
     setDeleteTargetEmail(String(emailToDelete || ""));
     setDeleteOpen(true);
   }
+
+  const loading = usersQuery.isLoading;
+  const error = mutationError || usersQuery.error?.message || "";
 
   return (
     <div className="min-h-screen bg-background">

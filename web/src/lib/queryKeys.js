@@ -1,4 +1,8 @@
 export const queryKeys = {
+  auth: {
+    all: ["auth"],
+    me: () => ["auth", "me"],
+  },
   users: {
     all: ["users"],
     list: (filters = {}) => ["users", "list", filters],
@@ -36,4 +40,3 @@ export const queryKeys = {
     transactionsByPeriod: (periodKey) => ["investors", "transactions", "period", String(periodKey || "")],
   },
 };
-

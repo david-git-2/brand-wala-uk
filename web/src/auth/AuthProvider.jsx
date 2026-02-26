@@ -8,6 +8,7 @@ const AuthCtx = createContext(null);
 const functionsRegion = String(window.BW_CONFIG?.APP?.functionsRegion || "us-central1").trim();
 const firebaseFunctions = getFunctions(firebaseApp, functionsRegion);
 const syncMyClaimsFn = httpsCallable(firebaseFunctions, "syncMyClaims");
+const SESSION_USER_KEY = "bw.auth.user.v1";
 
 function toBool(v, fallback = false) {
   const s = String(v ?? "").trim().toLowerCase();
@@ -19,8 +20,28 @@ function toBool(v, fallback = false) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_USER_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
+
+  function writeSessionUser(nextUser) {
+    try {
+      if (!nextUser) {
+        sessionStorage.removeItem(SESSION_USER_KEY);
+        return;
+      }
+      sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(nextUser));
+    } catch {
+      // ignore storage errors
+    }
+  }
 
   async function hydrateFromFirebaseAuth(firebaseUser, { forceSignOut = true } = {}) {
     const email = String(firebaseUser?.email || "").trim().toLowerCase();
@@ -101,11 +122,13 @@ export function AuthProvider({ children }) {
     try {
       const next = await hydrateFromFirebaseAuth(current, { forceSignOut: false });
       setUser(next);
+      writeSessionUser(next);
       if (!next) return { ok: false, reason: "profile_not_found_or_inactive" };
       return { ok: true, user: next };
     } catch (err) {
       console.error("refreshAccess failed", err);
       setUser(null);
+      writeSessionUser(null);
       return {
         ok: false,
         reason: String(err?.code || err?.message || "unknown_error"),
@@ -119,13 +142,16 @@ export function AuthProvider({ children }) {
       try {
         if (!firebaseUser) {
           setUser(null);
+          writeSessionUser(null);
           return;
         }
         const next = await hydrateFromFirebaseAuth(firebaseUser);
         setUser(next);
+        writeSessionUser(next);
       } catch (err) {
         console.error("Auth state hydration failed", err);
         setUser(null);
+        writeSessionUser(null);
       } finally {
         setLoading(false);
       }
@@ -139,6 +165,7 @@ export function AuthProvider({ children }) {
   async function logout() {
     await signOut(firebaseAuth);
     setUser(null);
+    writeSessionUser(null);
   }
 
   const value = useMemo(
