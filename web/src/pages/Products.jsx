@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ProductCard from "../components/ProductCard";
+import { Filter } from "lucide-react";
 
 // shadcn/ui
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 function buildProductId(p) {
   const pid = String(p?.product_id || p?.productId || "").trim();
@@ -65,6 +74,7 @@ function SkeletonCard() {
 export default function Products() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // Filters
   const [q, setQ] = useState("");
@@ -158,48 +168,102 @@ export default function Products() {
   const totalCount = products.length;
   const showingCount = filtered.length;
   const skeletonCount = 20;
+  const hasActiveFilter = brand !== "ALL" || q.trim().length > 0;
+  const activeFilterCount = (brand !== "ALL" ? 1 : 0) + (q.trim().length > 0 ? 1 : 0);
+  const clearFilters = () => {
+    setQ("");
+    setBrand("ALL");
+  };
+
+  const FilterFields = (
+    <div className="grid grid-cols-1 gap-3">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Search
+        </label>
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search name, brand, barcode, code, or product id..."
+          className="rounded-xl"
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Brand
+        </label>
+        <Select value={brand} onValueChange={setBrand}>
+          <SelectTrigger className="rounded-xl">
+            <SelectValue placeholder="Select brand" />
+          </SelectTrigger>
+          <SelectContent>
+            {brands.map((b) => (
+              <SelectItem key={b} value={b}>
+                {b === "ALL" ? "All brands" : b}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
-        {/* Filters */}
-        <Card className="mb-6 rounded-2xl">
+        <div className="mb-4 flex items-center justify-between gap-2 lg:hidden">
+          <div className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {loading ? "—" : showingCount}
+            </span>{" "}
+            showing <span className="opacity-60">/</span>{" "}
+            <span className="font-medium text-foreground">
+              {loading ? "—" : totalCount}
+            </span>
+          </div>
+          <Sheet open={filterOpen} onOpenChange={setFilterOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant={hasActiveFilter ? "default" : "outline"}
+                className="rounded-xl"
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                Filters
+                {hasActiveFilter ? (
+                  <span className="ml-2 rounded-full border border-current px-1.5 py-0.5 text-[10px] leading-none">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[90vw] sm:max-w-sm">
+              <SheetHeader>
+                <SheetTitle>Filters</SheetTitle>
+                <SheetDescription>Refine product list by search and brand.</SheetDescription>
+              </SheetHeader>
+              <div className="mt-4 space-y-4">
+                {FilterFields}
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" className="flex-1 rounded-xl" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                  <Button className="flex-1 rounded-xl" onClick={() => setFilterOpen(false)}>
+                    Apply
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+
+        {/* Desktop Filters */}
+        <Card className="mb-6 hidden rounded-2xl lg:block">
           <CardContent className="p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               {/* Left side */}
               <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
-                {/* Search */}
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    Search
-                  </label>
-                  <Input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search name, brand, barcode, code, or product id..."
-                    className="rounded-xl"
-                  />
-                </div>
-
-                {/* Brand */}
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                    Brand
-                  </label>
-
-                  <Select value={brand} onValueChange={setBrand}>
-                    <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder="Select brand" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {brands.map((b) => (
-                        <SelectItem key={b} value={b}>
-                          {b === "ALL" ? "All brands" : b}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {FilterFields}
               </div>
 
               {/* Right side: counts + clear */}
@@ -218,16 +282,12 @@ export default function Products() {
                 <Button
                   variant="outline"
                   className="w-full rounded-xl sm:w-auto"
-                  onClick={() => {
-                    setQ("");
-                    setBrand("ALL");
-                  }}
+                  onClick={clearFilters}
                 >
                   Clear
                 </Button>
               </div>
             </div>
-
           </CardContent>
         </Card>
 

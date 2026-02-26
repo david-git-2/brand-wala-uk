@@ -6,6 +6,7 @@ import CartFab from "./cart/CartFab";
 import CartSidebar from "./cart/CartSidebar";
 import NavBar from "./navigation/NavBar";
 import ApiLoadingBar from "./components/ApiLoadingBar";
+import ScrollTopButton from "./components/ScrollTopButton";
 
 function shouldShowCartUI(pathname) {
   const allowed = ["/products"];
@@ -38,6 +39,7 @@ export default function App() {
 
       {showCartUI && canUseCart && <CartSidebar />}
       {showCartUI && canUseCart && <CartFab />}
+      {showNav && <ScrollTopButton />}
     </>
   );
 }
